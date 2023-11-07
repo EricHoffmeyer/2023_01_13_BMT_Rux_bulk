@@ -1,0 +1,32 @@
+sample_id,revised_id,condition,group,cell_type,mouse_number,H2K,recip_mouse,radiation,replicate,r1_fastq,r2_fastq
+CD4_52,CD4_reject_1,Reject CD4,Rejection,CD4,52,b,b6,6,1,52-CD4_S37_L002_R1_001.fastq.gz,52-CD4_S37_L002_R2_001.fastq.gz
+CD4_53,CD4_reject_2,Reject CD4,Rejection,CD4,53,b,b6,6,2,53-CD4_S39_L002_R1_001.fastq.gz,53-CD4_S39_L002_R2_001.fastq.gz
+CD4_55,CD4_auto_b6_1,Autol C57 CD4,Auto_b6,CD4,55,b,b6,12,1,55-CD4_S41_L002_R1_001.fastq.gz,55-CD4_S41_L002_R2_001.fastq.gz
+CD4_56,CD4_auto_b6_2,Autol C57 CD4,Auto_b6,CD4,56,b,b6,12,2,56-CD4_S43_L002_R1_001.fastq.gz,56-CD4_S43_L002_R2_001.fastq.gz
+CD4_61,CD4_auto_balb_1,Autol Balb-CD4,Auto_balb,CD4,61,d,balb,8,1,61-CD4_S57_L002_R1_001.fastq.gz,61-CD4_S57_L002_R2_001.fastq.gz
+CD4_62,CD4_auto_balb_2,Autol Balb-CD4,Auto_balb,CD4,62,d,balb,8,2,62-CD4_S59_L002_R1_001.fastq.gz,62-CD4_S59_L002_R2_001.fastq.gz
+CD4_63,CD4_auto_balb_3,Autol Balb-CD4,Auto_balb,CD4,63,d,balb,8,3,63-CD4_S61_L002_R1_001.fastq.gz,63-CD4_S61_L002_R2_001.fastq.gz
+CD4_B_57,CD4_mix_B_1,Mixed CD4 HLA B,Mixed,CD4,57,b,b6,6,1,57-CD4-B_S45_L002_R1_001.fastq.gz,57-CD4-B_S45_L002_R2_001.fastq.gz
+CD4_B_58,CD4_mix_B_2,Mixed CD4 HLA B,Mixed,CD4,58,b,b6,6,2,58-CD4-B_S49_L002_R1_001.fastq.gz,58-CD4-B_S49_L002_R2_001.fastq.gz
+CD4_B_60,CD4_mix_B_3,Mixed CD4 HLA B,Mixed,CD4,60,b,b6,6,3,60-CD4-B_S53_L002_R1_001.fastq.gz,60-CD4-B_S53_L002_R2_001.fastq.gz
+CD4_D_57,CD4_mix_D_1,Mixed CD4-HLA D,Mixed,CD4,57,d,b6,6,1,57-CD4-D_S46_L002_R1_001.fastq.gz,57-CD4-D_S46_L002_R2_001.fastq.gz
+CD4_D_58,CD4_mix_D_2,Mixed CD4-HLA D,Mixed,CD4,58,d,b6,6,2,58-CD4-D_S50_L002_R1_001.fastq.gz,58-CD4-D_S50_L002_R2_001.fastq.gz
+CD4_D_60,CD4_mix_D_3,Mixed CD4-HLA D,Mixed,CD4,60,d,b6,6,3,60-CD4-D_S54_L002_R1_001.fastq.gz,60-CD4-D_S54_L002_R2_001.fastq.gz
+CD8_52,CD8_reject_1,Reject CD8,Rejection,CD8,52,b,b6,6,1,52-CD8_S38_L002_R1_001.fastq.gz,52-CD8_S38_L002_R2_001.fastq.gz
+CD8_53,CD8_reject_2,Reject CD8,Rejection,CD8,53,b,b6,6,2,53-CD8_S40_L002_R1_001.fastq.gz,53-CD8_S40_L002_R2_001.fastq.gz
+CD8_55,CD8_auto_b6_1,Autol C57-CD8,Auto_b6,CD8,55,b,b6,12,1,55-CD8_S42_L002_R1_001.fastq.gz,55-CD8_S42_L002_R2_001.fastq.gz
+CD8_56,CD8_auto_b6_2,Autol C57-CD8,Auto_b6,CD8,56,b,b6,12,2,56-CD8_S44_L002_R1_001.fastq.gz,56-CD8_S44_L002_R2_001.fastq.gz
+CD8_61,CD8_auto_balb_1,Autol Balb-CD8,Auto_balb,CD8,61,d,balb,8,1,61-CD8_S58_L002_R1_001.fastq.gz,61-CD8_S58_L002_R2_001.fastq.gz
+CD8_62,CD8_auto_balb_2,Autol Balb-CD8,Auto_balb,CD8,62,d,balb,8,2,62-CD8_S60_L002_R1_001.fastq.gz,62-CD8_S60_L002_R2_001.fastq.gz
+CD8_63,CD8_auto_balb_3,Autol Balb-CD8,Auto_balb,CD8,63,d,balb,8,3,63-CD8_S62_L002_R1_001.fastq.gz,63-CD8_S62_L002_R2_001.fastq.gz
+CD8_B_57,CD8_mix_B_1,Mixed CD8-HLA B,Mixed,CD8,57,b,b6,6,1,57-CD8-B_S47_L002_R1_001.fastq.gz,57-CD8-B_S47_L002_R2_001.fastq.gz
+CD8_B_58,CD8_mix_B_2,Mixed CD8-HLA B,Mixed,CD8,58,b,b6,6,2,58-CD8-B_S51_L002_R1_001.fastq.gz,58-CD8-B_S51_L002_R2_001.fastq.gz
+CD8_B_60,CD8_mix_B_3,Mixed CD8-HLA B,Mixed,CD8,60,b,b6,6,3,60-CD8-B_S55_L002_R1_001.fastq.gz,60-CD8-B_S55_L002_R2_001.fastq.gz
+CD8_D_57,CD8_mix_D_1,Mixed CD8-HLA D,Mixed,CD8,57,d,b6,6,1,57-CD8-D_S48_L002_R1_001.fastq.gz,57-CD8-D_S48_L002_R2_001.fastq.gz
+CD8_D_58,CD8_mix_D_2,Mixed CD8-HLA D,Mixed,CD8,58,d,b6,6,2,58-CD8-D_S52_L002_R1_001.fastq.gz,58-CD8-D_S52_L002_R2_001.fastq.gz
+CD8_D_60,CD8_mix_D_3,Mixed CD8-HLA D,Mixed,CD8,60,d,b6,6,3,60-CD8-D_S56_L002_R1_001.fastq.gz,60-CD8-D_S56_L002_R2_001.fastq.gz
+NK1,NK_reject,Reject NK,Rejection,NK,52-53,b,b6,6,1,NK-1_S32_L002_R1_001.fastq.gz,NK-1_S32_L002_R2_001.fastq.gz
+NK2B,NK_mix_B,Mixed NK HLA B,Mixed,NK,57-60,b,b6,6,1,NK-2B_S33_L002_R1_001.fastq.gz,NK-2B_S33_L002_R2_001.fastq.gz
+NK2D,NK_mix_D,Mixed NK HLA D,Mixed,NK,57-60,d,b6,6,1,NK-2D_S34_L002_R1_001.fastq.gz,NK-2D_S34_L002_R2_001.fastq.gz
+NK3,NK_auto_balb,Autol Balb NK,Auto_balb,NK,61-63,d,balb,8,1,NK-3_S35_L002_R1_001.fastq.gz,NK-3_S35_L002_R2_001.fastq.gz
+NK4,NK_auto_b6,Autol C57 NK,Auto_b6,NK,55-56,b,b6,12,1,NK-4_S36_L002_R1_001.fastq.gz,NK-4_S36_L002_R2_001.fastq.gz
