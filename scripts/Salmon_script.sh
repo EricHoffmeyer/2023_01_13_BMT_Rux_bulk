@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 INVESTIGATOR=verneris
-PROJECT=2023_06_23_Jessica_B7H3_bead_stim
+PROJECT=2023_01_04_BMT_Rux_bulk
 
 RAN_ON=$(date +%Y_%m_%d)
 NUMBER=0
@@ -9,8 +9,8 @@ ADAPTERS=/cluster/software/modules-sw/BBMap/bbmap_38.86/resources
 RNASEQ=/beevol/home/hoffmeye/documents/bulk_RNAseq
 GENOMES=/beevol/home/hoffmeye/documents/genomes
 # SALMON=/beevol/home/phangtzu/Documents/tools/salmon-1.6.0_linux_x86_64/bin
-INDEX1=$GENOMES/STAR_indices/human_GRCh38_for_150bp_reads
-INDEX2=$GENOMES/Salmon_indices/human_GRCh38_all_cDNAs_index
+INDEX1=$GENOMES/STAR_indices/murine_GRCm38_for_150bp_reads_w_Ensembl_96_gtf
+INDEX2=$GENOMES/Salmon_indices/murine_GRCm38_Ensembl_96_w_decoy_and_w_nrcrna
 DATA=$RNASEQ/${INVESTIGATOR}/$PROJECT
 SCRIPTS=$DATA/scripts
 FASTQ=$DATA/fastq_files
