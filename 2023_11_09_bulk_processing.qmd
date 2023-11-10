@@ -1,0 +1,75 @@
+---
+title: "2023_11_09_bulk_processing"
+#format: html
+editor: source
+---
+
+# Load Libraries
+
+These libraries are required to perform this RNAseq analysis. Make sure you have install them before begin the analysis.
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(tidybulk)
+library(janitor)
+library(plotly)
+library(ggrepel)
+library(DESeq2)
+library(GeneTonic)
+library(pcaExplorer)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(topGO)
+})
+```
+
+
+# Data Dictionary
+
+Each sample was organized into its owned folder named using various variable separated by underscore ("\_"). For example, for"697_C\_CAR_Rep2_S5_L001":
+
+-   697: cell line
+-   C: treatment
+-   CAR: condition
+-   Rep2: replicate
+-   S5: sequencing cell segment
+-   L001: sequencing cell line
+
+The code below manually listing samples' folder in a `vector` variable called `dir.names`
+
+```{r}
+dir.names = c(
+"52-CD4_S37_L002",
+"52-CD8_S38_L002",
+"53-CD4_S39_L002",
+"53-CD8_S40_L002",
+"55-CD4_S41_L002",
+"55-CD8_S42_L002",
+"56-CD4_S43_L002",
+"56-CD8_S44_L002",
+"57-CD4-B_S45_L002",
+"57-CD4-D_S46_L002",
+"57-CD8-B_S47_L002",
+"57-CD8-D_S48_L002",
+"58-CD4-B_S49_L002",
+"58-CD4-D_S50_L002",
+"58-CD8-B_S51_L002",
+"58-CD8-D_S52_L002",
+"60-CD4-B_S53_L002",
+"60-CD4-D_S54_L002",
+"60-CD8-B_S55_L002",
+"60-CD8-D_S56_L002",
+"61-CD4_S57_L002",
+"61-CD8_S58_L002",
+"62-CD4_S59_L002",
+"62-CD8_S60_L002",
+"63-CD4_S61_L002",
+"63-CD8_S62_L002",
+"NK-1_S32_L002",
+"NK-2B_S33_L002",
+"NK-2D_S34_L002",
+"NK-3_S35_L002",
+"NK-4_S36_L002"
+)
+```
