@@ -24,7 +24,6 @@ library(topGO)
 })
 ```
 
-
 # Data Dictionary - Metadata
 
 Read in metadata and create a new column that matches with file folders
@@ -40,14 +39,14 @@ Our goal is to sum up all counts of a gene (represented by gene ID) from all its
 
 ```{r}
 # Load this below
-gtf <-  rtracklayer::import("XXXXX")
+gtf <-  rtracklayer::import("data/Mus_musculus.GRCm38.102.gtf")
 
 gtf_df <-  as.data.frame(gtf)
 
 gtf_df
 ```
 
-### Save `gtf`
+### Save `gtf_df`
 
 ```{r}
 save(gtf_df, file = "data/mouse38_gtf_df.Rdata")
@@ -79,7 +78,7 @@ Predefine count table matrix by importing one of Salmon result to determine the 
 
 ```{r}
 ## Assesss how many genes in each sample?
-tmp <-  read.delim(paste("data/raw_data/salmon_output_files", meta$folder_name[1], "quant.sf", sep = "/")) |>
+tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name[1], "/quant.sf")) |>
   ## The Ensembl ID (Name) column has an extra period (.) and a digit
   ## Remove them from each entries:
   mutate(Name = str_sub(Name, end=-3)) |>
@@ -93,14 +92,14 @@ tmp <-  read.delim(paste("data/raw_data/salmon_output_files", meta$folder_name[1
 Now we can (pre)define the data matrix to hold all the samples, and start looping in all the samples from Salmon.
 
 ```{r}
-sf.df <-  data.frame(matrix(0, nrow = length(tmp$gene_id), ncol = length(Data.dictionary$Orig.Name)))
+sf.df <-  data.frame(matrix(0, nrow = length(tmp$gene_id), ncol = length(meta$folder_name)))
 colnames(sf.df) <-  meta$folder_name
 rownames(sf.df) <-  tmp$gene_id
 
 for(i in seq_along(meta$folder_name)){
-  cat("Reading ", meta$folder_name[i], " Now ..............\n")
+  cat("Now reading...", meta$folder_name[i])
 
-  sf.df[,i] = read.delim(paste("data/raw_data/salmon_output_files", meta$folder_name[i], "quant.sf", sep = "/")) |> 
+  sf.df[,i] = read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name[1], "/quant.sf")) |> 
     mutate(Name = str_sub(Name, end=-3)) |>
     inner_join(tx2gene_df, by=c("Name"="transcript_id")) |>
     group_by(gene_id) |>
