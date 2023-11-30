@@ -114,7 +114,7 @@ sf.df
 
 # Save dataset
 
-Save a copy of the Salmon dataset so you don't have to reimport all the files everytimes:
+Save a copy of the Salmon dataset so you don't have to reimport all the files everytime:
 
 ```{r}
 save(sf.df, file = "data/sf.df.Rdata")
@@ -124,10 +124,52 @@ save(sf.df, file = "data/sf.df.Rdata")
 load(file = "data/sf.df.Rdata")
 ```
 
+# Subset samples
 
+If necessary, subset here
 
+```{r}
+# meta_subset <- meta$sample_id |> 
+#   filter()
+```
 
+# Filter count data
 
+```{r}
+sf.df.data <- sf.df %>%
+  ## Select or subset the desired samples 
+  #dplyr::select(subset.samples) %>%
+  ## Remove all NA (if any)
+  drop_na() %>% 
+  ## Filter low expressors
+  ### each value must be more than 10
+  mutate(Rowsum = apply(., 1, function(x) sum(x > 10))) %>% 
+  ### All values must be more than 10 (set to x if only x value is satisfied)
+  dplyr::filter(Rowsum == dim(meta)[1]) %>% 
+  ## No longer need the column "Rowsum", we can remove it
+  dplyr::select(-Rowsum)
+
+sf.df.data
+```
+
+# DESeq Object
+
+```{r}
+class(sf.df.data)
+```
+
+## Create SummarizeExperiment Object
+
+```{r}
+sf.df.se <- SummarizedExperiment(assays = list(counts = as.matrix(sf.df.data)),
+                                colData = meta)
+```
+
+## Create DESeq Object
+
+```{r}
+sf.df.dds = DESeqDataSet(sf.df.se, design = ~ group)
+```
 
 
 
