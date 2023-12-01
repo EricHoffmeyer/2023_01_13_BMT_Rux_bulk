@@ -6,7 +6,7 @@ editor: source
 
 # Load Libraries
 
-These libraries are required to perform this RNAseq analysis. Make sure you have install them before begin the analysis.
+These libraries are required to perform this RNAseq analysis.
 
 ```{r}
 suppressPackageStartupMessages({
@@ -26,16 +26,17 @@ library(topGO)
 
 # Data Dictionary - Metadata
 
-Read in metadata and create a new column that matches with file folders
+Read in metadata and create a new column that matches with file folders. Folder_name will help us read in the sample quant.sf files.
 
 ```{r}
 meta <- read.csv(file = "data/metadata/PLX037286_sample_data_eric_ARRANGED.csv") |>
-  mutate(folder_name = str_remove(r1_fastq, pattern = "_R1_001.fastq.gz"))
+  mutate(folder_name = str_remove(r1_fastq, pattern = "_R1_001.fastq.gz"),
+         .before = cell_type)
 ```
 
 # Transcript-Gene-Pair: `tx2gene_df`
 
-Our goal is to sum up all counts of a gene (represented by gene ID) from all its transcripts (represented by transcript ID). First, we will import gene's feature file (GTF) which contains gene id and transcipt id match.
+Our goal is to sum up all counts of a gene (represented by gene ID) from all its transcripts (represented by transcript ID). First, we will import the mouse gene feature file (GTF) which will help us match the gene id and transcipt id.
 
 ```{r}
 # Load this below
@@ -89,7 +90,7 @@ tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name
   summarise(NumReads=as.integer(sum(NumReads)))
 ```
 
-Now we can (pre)define the data matrix to hold all the samples, and start looping in all the samples from Salmon.
+Now we can pre-define an empty data matrix to the correct dimensions. Then we will perform a loop to read the quant files and fill in the data matrix on column at a time.
 
 ```{r}
 sf.df <-  data.frame(matrix(0, nrow = length(tmp$gene_id), ncol = length(meta$folder_name)))
@@ -99,7 +100,7 @@ rownames(sf.df) <-  tmp$gene_id
 for(i in seq_along(meta$folder_name)){
   cat("Now reading...", meta$folder_name[i])
 
-  sf.df[,i] = read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name[1], "/quant.sf")) |> 
+  sf.df[,i] = read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name[i], "/quant.sf")) |> 
     mutate(Name = str_sub(Name, end=-3)) |>
     inner_join(tx2gene_df, by=c("Name"="transcript_id")) |>
     group_by(gene_id) |>
@@ -114,7 +115,7 @@ sf.df
 
 # Save dataset
 
-Save a copy of the Salmon dataset so you don't have to reimport all the files everytime:
+Save a copy of the Salmon dataset so you don't have to start from scratch in future analyses:
 
 ```{r}
 save(sf.df, file = "data/sf.df.Rdata")
@@ -126,7 +127,7 @@ load(file = "data/sf.df.Rdata")
 
 # Subset samples
 
-If necessary, subset here
+If necessary, subset here:
 
 ```{r}
 # meta_subset <- meta$sample_id |> 
@@ -135,21 +136,23 @@ If necessary, subset here
 
 # Filter count data
 
-```{r}
-sf.df.data <- sf.df %>%
-  ## Select or subset the desired samples 
-  #dplyr::select(subset.samples) %>%
-  ## Remove all NA (if any)
-  drop_na() %>% 
-  ## Filter low expressors
-  ### each value must be more than 10
-  mutate(Rowsum = apply(., 1, function(x) sum(x > 10))) %>% 
-  ### All values must be more than 10 (set to x if only x value is satisfied)
-  dplyr::filter(Rowsum == dim(meta)[1]) %>% 
-  ## No longer need the column "Rowsum", we can remove it
-  dplyr::select(-Rowsum)
+I'm saving this code but not running it for now. Our bulk data contains samples of multiple cell types : T, B, and NK cells. Filtering here may not be the right
 
-sf.df.data
+```{r}
+# sf.df.data <- sf.df %>%
+#   ## Select or subset the desired samples 
+#   #dplyr::select(subset.samples) %>%
+#   ## Remove all NA (if any)
+#   drop_na() %>% 
+#   ## Filter low expressors
+#   ### each value must be more than 10
+#   mutate(Rowsum = apply(., 1, function(x) sum(x > 10))) %>% 
+#   ### All values must be more than 10 (set to x if only x value is satisfied)
+#   dplyr::filter(Rowsum == dim(meta)[1]) %>% 
+#   ## No longer need the column "Rowsum", we can remove it
+#   dplyr::select(-Rowsum)
+# 
+# sf.df.data
 ```
 
 # DESeq Object
