@@ -10,6 +10,8 @@ Briefly, mice were given bone marrow transplants ("BMT") with the following cond
 
   Mice were irradiated at Day -1 and the BMT was performed at Day 0. Ruxolitinib treatment was given from Day -5 to Day +28. Mice were sacked at D35.
 
+  Additional data for control CD4 and CD8 T cells (isolated from spleens) was brought in from GEO to use as another control.
+
   Folders contain the following:
 
   # Folder one
