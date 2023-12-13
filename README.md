@@ -8,10 +8,10 @@ Briefly, mice were given bone marrow transplants ("BMT") with the following cond
 - B6 bone marrow into B6 mice with 13Gy irradiation (autologous acceptance, B6)
 - Balb/c bone marrow into B6 mice, 6.5Gy irradiation, + Ruxolitinib treatment (allogenic acceptance/mixed chimerism)
 
-  Mice were irradiated at Day -1 and the BMT was performed at Day 0. Ruxolitinib treatment was given from Day -5 to Day +28. Mice were sacked at D35.
+Mice were irradiated at Day -1 and the BMT was performed at Day 0. Ruxolitinib treatment was given from Day -5 to Day +28. Mice were sacked at D35.
 
-  Additional data for control CD4 and CD8 T cells (isolated from spleens) was brought in from GEO to use as another control.
+Additional data for control CD4 and CD8 T cells (isolated from spleens) was brought in from GEO to use as another control.
 
-  Folders contain the following:
+Folders contain the following:
 
   # Folder one
