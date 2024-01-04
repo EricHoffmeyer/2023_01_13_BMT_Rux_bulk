@@ -1,6 +1,6 @@
 ---
 title: "2023_11_09_bulk_processing"
-#format: html
+format: html
 editor: source
 ---
 
@@ -40,36 +40,36 @@ Read in metadata and create a new column that matches with file folders.
   Folder_name will help us read in the sample quant.sf files.
 
 ```{r}
-assay_meta <- read.csv(file = "data/metadata/PLX037286_sample_data_eric_ARRANGED.csv") |>
+assay.meta <- read.csv(file = "data/metadata/PLX037286_sample_data_eric_ARRANGED.csv") |>
   mutate(folder_name = str_remove(folder_name, pattern = "_R1_001.fastq.gz"))
-public_meta <- read_tsv(file = "data/metadata/filereport_read_run_PRJNA448448_tsv_ARRANGED.txt") |> 
+public.meta <- read_tsv(file = "data/metadata/filereport_read_run_PRJNA448448_tsv_ARRANGED.txt") |> 
   as.data.frame()
 
-combined_meta <- rbind(assay_meta, public_meta)
+combined_meta <- rbind(assay.meta, public.meta)
 ```
 
 
-# Transcript-Gene-Pair: `tx2gene_df`
+# Transcript-Gene-Pair: `tx2gene.df`
 
 Our goal is to sum up all counts of a gene (represented by gene ID) from all its transcripts (represented by transcript ID). First, we will import the mouse gene feature file (GTF) which will help us match the gene id and transcipt id.
 
 ```{r}
-# Load this below
+#Load this below
 gtf <-  rtracklayer::import("data/Mus_musculus.GRCm39.110.gtf")
 
-gtf_df <- as.data.frame(gtf)
+gtf.df <- as.data.frame(gtf)
 
-gtf_df
+gtf.df
 ```
 
-### Save/Load `gtf_df`
+### Save/Load `gtf.df`
 
 ```{r}
-#save(gtf_df, file = "data/mouse39_gtf_df.Rdata")
+# save(gtf.df, file = "data/mouse39_gtf_df.Rdata")
 ```
 
 ```{r}
-load(file = "data/mouse39_gtf_df.Rdata")
+# gtf.df <- load(file = "data/mouse39_gtf_df.Rdata")
 ```
 
 ## Look up table
@@ -77,12 +77,12 @@ load(file = "data/mouse39_gtf_df.Rdata")
 Create a look-up-table matching gene id to all its transcript ids:
 
 ```{r}
-tx2gene_df <- gtf_df |>
+tx2gene.df <- gtf.df |>
   dplyr::select(transcript_id, gene_id) |>
 	distinct(transcript_id, gene_id) |>
-  drop_na() -> tx2gene_df
+  drop_na() -> tx2gene.df
 
-tx2gene_df
+tx2gene.df
 ```
 
 # Salmon loop
@@ -93,7 +93,7 @@ Predefine count table matrix by importing one of Salmon result to determine the 
 tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/",
                           combined_meta$folder_name[1], "/quant.sf")) |>
   mutate(Name = str_sub(Name, end=-3)) |>
-  inner_join(tx2gene_df, by=c("Name"="transcript_id")) |>
+  inner_join(tx2gene.df, by=c("Name"="transcript_id")) |>
   group_by(gene_id) |>
   summarise(NumReads=as.integer(sum(NumReads)))
 ```
@@ -111,9 +111,9 @@ rownames(sf.df) <-  tmp$gene_id
 for(i in seq_along(combined_meta$folder_name)){
   cat("Now reading...", combined_meta$folder_name[i], "\n")
   
-  sf.df[,i] = read.delim(paste0("data/raw_data/salmon_output_files/", combined_meta$folder_name[i], "/quant.sf")) |> 
+  sf.df[,i] <-  read.delim(paste0("data/raw_data/salmon_output_files/", combined_meta$folder_name[i], "/quant.sf")) |>
     mutate(Name = str_sub(Name, end=-3)) |>
-    inner_join(tx2gene_df, by=c("Name"="transcript_id")) |>
+    inner_join(tx2gene.df, by=c("Name"="transcript_id")) |>
     group_by(gene_id) |>
     summarise(NumReads=as.integer(sum(NumReads))) |>
     pull(NumReads)
@@ -130,16 +130,13 @@ Save a copy of the Salmon dataset so you don't have to start from scratch in fut
 
 ```{r}
 # save(sf.df, file = "2023_11_09_results/sf.df.Rdata")
-```
-
-```{r}
-load(file = "2023_11_09_results/sf.df.Rdata")
+sf.df <- load(file = "2023_11_09_results/sf.df.Rdata")
 ```
 
 ## Create salmon data matrix
 
 ```{r}
-salmon_matrix <- as.matrix(sf.df)
+salmon.matrix <- as.matrix(sf.df)
 ```
 
 ```{r}
@@ -152,14 +149,14 @@ coldata
 ## Balance Check
 
 ```{r}
-all(rownames(coldata) %in% colnames(salmon_matrix))
+all(rownames(coldata) %in% colnames(salmon.matrix))
 ```
 
 # DESeq pipleline
 ## SummarizedExperiment Object
 
 ```{r}
-total.se <- SummarizedExperiment(assays = list(counts = salmon_matrix),
+total.se <- SummarizedExperiment(assays = list(counts = salmon.matrix),
                            colData = coldata)
 
 total.se
@@ -168,7 +165,8 @@ total.se
 ### Save/Load SE object
 
 ```{r}
-save(total.se, file = "2023_11_09_results/total.se.Rdata")
+# save(total.se, file = "2023_11_09_results/total.se.Rdata")
+total.se <- load(file = "2023_11_09_results/total.se.Rdata")
 ```
 
 # QC check
@@ -192,7 +190,9 @@ colData(total.scaled.se)
 
 ```{r}
 total.pca.se <- total.se |> 
-  reduce_dimensions(method = "PCA", .dims = 3)
+  tidybulk::keep_abundant() %>%
+  tidybulk::scale_abundance() %>%
+  tidybulk::reduce_dimensions(method = "PCA", .dims = 3)
 ```
 
 ```{r}
@@ -200,224 +200,113 @@ data.frame(colData(total.pca.se))
 ```
 
 ```{r}
-# total.scaled.se |>
-#   # Reshaping
-#   pivot_longer(cols = c("counts", "counts_scaled"),
-#                names_to = "source",
-#                values_to = "abundance") |>
-#   # Plotting
-#   ggplot(aes(x = abundance + 1, color = .sample)) +
-#   geom_density() +
-#   facet_wrap(~source) +
-#   scale_x_log10()
+options(ggrepel.max.overlaps = Inf)
+
+total.pca.se |> 
+  tidybulk::pivot_sample() |> 
+  ggplot(aes(x = PC1, y = PC2, colour = condition)) +
+  geom_point() +
+  geom_text_repel(aes(label = condition), show.legend = FALSE, size = 3)
 ```
-## 2D PCA
+
+# DESeq
+
+IN the original run, Tzu creatd a master DESeq loop that ran and output all the comparisons at once. This was too complicated for me to simply copy and paste. I will run a single iteration first. If the results look good, I will create some functions to perform each step individually but perform all comparisons in one code chunk.
+
+## Create DESeq Object
+
+Quick look at metadata again.
+
+```{r}
+combined_meta
+```
+
+All of our comparisons will be done using the `condition` column. So that is our design variable.
+
+```{r}
+sf.df.dds = DESeqDataSet(total.se, design = ~ condition)
+```
+
+Run DESeq.
+
+```{r}
+sf.df.dds = DESeq(sf.df.dds)
+```
+
+Quick look at our condition column to help copy/paste for our results function
 
 ```{r}
 combined_meta |> 
   dplyr::count(condition)
 ```
-## DESeq Loop
+
+## Results
+
+First comparison: mixed CD4 H2Kb cells vs reject CD4 (also H2Kb) cells.
 
 ```{r}
-count.df <- assay(total.pca.se)
-count.df[1:4,]
+mix.4.b.vs.rej.4.res <- results(sf.df.dds,
+                        contrast = c("condition", "Mixed CD4 HLA B", "Reject CD4"),
+                        alpha = 0.05)
 ```
 
-### Paramter Variables
+## Annotation table
 
-#### Build Annotation
+It is good practice to include the raw counts in our DESeq results so we can confirm the comparisons were done correctly.
+
+Including all the column data would be confusing, so let's filter the dataframe to only show the conditions in the DESeq comparison. I also am going to filter out low/no count genes here. Later when we join it to the DESeq results, using `na.omit()` will get rid of all low/no count genes along with unmapped reads.
+
+Then we will change the ensembl id rownames in `sf.df` into a column called `gene_id`. In the next step we will join this to our results dataframe.
 
 ```{r}
-total.pca.se.ensembl <- rownames(total.pca.se)
+subset.vector <- combined_meta |> 
+  dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4")
+
+sf.df.data.df <-  sf.df |>
+  dplyr::select(subset.vector$folder_name)
+
+sf.df.data.df <- sf.df.data.df |> 
+  mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
+  # All values must be more than 10 (set to x if only x value is satisfied)
+  dplyr::filter(row.sum == dim(subset.vector)[1]) |> 
+  # No longer need the column "row.sum", we can remove it
+  dplyr::select(-row.sum) |> 
+  rownames_to_column(var = "gene_id")
 ```
 
+Now we turn the results object into a dataframe with gene annotation, and join the the raw counts for the samples in this comparison from `sf.df.data.df`.
+
 ```{r}
-total.pca.se.description <- mapIds(org.Mm.eg.db, 
-                                   keys = total.pca.se.ensembl, 
-                                   keytype = "ENSEMBL", 
-                                   column = "GENENAME")
-total.pca.se.symbol <- mapIds(org.Mm.eg.db,
-                              keys = total.pca.se.ensembl,
-                              keytype = "ENSEMBL",
-                              column = "SYMBOL")
-total.pca.se.entrezid <- mapIds(org.Mm.eg.db,
-                              keys = total.pca.se.ensembl,
-                              keytype = "ENSEMBL",
-                              column = "ENTREZID")
+mix.4.b.vs.rej.4.annotation <- deseqresult2df(mix.4.b.vs.rej.4.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_symbol = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) |> 
+  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "ENTREZID", multiVals = "first")) |> 
+  mutate(gene_desc = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "GENENAME", multiVals = "first")) |> 
+  relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
+  left_join(sf.df.data.df, by = c("gene_id"="gene_id")) 
 ```
 
+We want to save the DESeq results separately. At this point I want to filter out any genes that have low reads or NA values.
+
 ```{r}
-total.pca.se.annotated <- data.frame(ensembl = total.pca.se.ensembl,
-                                     symbol = total.pca.se.symbol,
-                                     description = total.pca.se.description)
-total.pca.se.annotated
+mix.4.b.vs.rej.4.annotation.filtered <- mix.4.b.vs.rej.4.annotation |> 
+  na.omit()
+
+write_csv(mix.4.b.vs.rej.4.annotation.filtered, file = paste0(folder.name, "/DESeq_results/mix.4.b.VS.rej.4.b.csv"))
 ```
 
-### Index sample
+Stop here and make a function to generate what we've done up to this point.
+Then save:
+          the DESeqDataSet object (do we need a separate one each time? It's the same object)
+          the results object
+          the annotated and filtered csv object.
+
+For the future genetonic, the bg_ids are generate from the results object so no need to double save
+
+
 
 ```{r}
-condition <- data.frame(colData(total.pca.se)) |> 
-  pull(condition)
-
-table(condition)
-```
-
-```{r}
-index.mix.4.b <- grep("Mixed CD4 HLA B", condition)
-index.mix.4.d <- grep("Mixed CD4-HLA D", condition)
-index.rej.4 <- grep("Reject CD4", condition)
-index.auto.4.b <- grep("Autol C57 CD4", condition)
-index.auto.4.d <- grep("Autol Balb-CD4", condition)
-cat("\n")
-index.mix.8.b <- grep("Mixed CD8-HLA B", condition)
-index.mix.8.d <- grep("Mixed CD8-HLA D", condition)
-index.rej.8 <- grep("Reject CD8", condition)
-index.auto.8.b <- grep("Autol C57-CD8", condition)
-index.auto.8.d <- grep("Autol Balb-CD8", condition)
-cat("\n")
-index.cont.4.b <- grep("WT Control CD4", condition)
-index.cont.8.b <- grep("WT Control CD4", condition)
-```
-
-```{r}
-script.date <- "2023_11_09"
-
-file.prefix.list <- c("4.mix.b.vs.reject",
-                      "4.mix.b.vs.auto.b",
-                      "8.mix.b.vs.reject",
-                      "8.mix.b.vs.auto",
-                      "4.mix.d.vs.auto.d",
-                      "8.mix.d.vs.auto.d",
-                      "4.mix.b.vs.control",
-                      "8.mix.b.vs.control",
-                      "4.auto.b.vs.control.b",
-                      "8.auto.b.vs.control.b")
-
-comparison.list <- list(
-  ## CD4: mixed B vs. Reject
-  '1.1' = c('Mixed CD4 HLA B', 'Reject CD4'),
-  ## CD4: mixed B vs. Autol C57
-  '1.2' = c('Mixed CD4 HLA B', 'Autol C57 CD4'),
-  ## CD8: mixed B vs. Reject
-  '2.1' = c('Mixed CD8-HLA B', 'Reject CD8'),
-  ## CD8: mixed B vs. Autol C57
-  '2.2' = c('Mixed CD8-HLA B','Autol C57-CD8'),
-  ## CD4: mixed D vs. Autol Balb
-  '7' = c('Mixed CD4-HLA D','Autol Balb-CD4'),
-  ## CD8: mixed D vs. Autol Balb
-  '8' = c('Mixed CD8-HLA D','Autol Balb-CD8'),
-  ## CD4: mixed b vs control b
-  '9' = c('Mixed CD4 HLA B', 'WT Control CD4'),
-  ## CD8: mixed b vs control b
-  '10' = c('Mixed CD8 HLA B', 'WT Control CD8'),
-  ## CD4: auto b vs control b
-  '11' = c('Autol C57 CD4', 'WT Control CD4'),
-  ## CD8: auto b vs control b
-  '12' = c('Autol C57-CD8', 'WT Control CD8')
-)
-
-count.matrix.index.list <- list(
-  "1.1"= list(index.mix.4.b, index.rej.4),
-  "1.2"= list(index.mix.4.b, index.auto.4.b),
-  "2.1"= list(index.mix.8.b, index.rej.8),
-  "2.2"= list(index.mix.8.b, index.auto.8.b),
-  "7"= list(index.mix.4.d, index.auto.4.d),
-  "8"= list(index.mix.8.d, index.auto.8.d),
-  "9"= list(index.mix.4.b, index.cont.4.b),
-  "10"=list(index.mix.8.b, index.cont.8.b),
-  "11"=list(index.auto.4.b, index.cont.4.b),
-  "12"=list(index.auto.8.b, index.cont.8.b)
-)
-
-alpha.level.list = c(
-  ## 1: CD4: mixed B vs. Reject
-  0.05,
-  ## 2: CD4: mixed B vs. Autol C57
-  0.05,
-  ## 3: CD8: mixed B vs. Reject
-  0.05,
-  ## 4: CD8: mixed B vs. Autol C57
-  0.05,
-  ## 5: CD4: mixed D vs. Autol Balb
-  0.05,
-  ## 6: CD8: mixed D vs. Autol Balb
-  0.05,
-  ## CD4: mixed b vs control b
-  0.05,
-  ## CD8: mixed b vs control b
-  0.05,
-  ## CD4: auto b vs control b
-  0.05,
-  ## CD8: auto b vs control b
-  0.05
-)
-```
-
-MASTER: Loop DESeq
-------------------------
-
-```{r}
-for(i in 10){ ## Temporary/Testloop
-    de_deseq2 = total.pca.se %>% 
-      test_differential_abundance(~condition,
-                                  method = "deseq2",
-                                  contrasts = list(c("condition", 
-                                                     comparison.list[[i]][[1]], 
-                                                     comparison.list[[i]][[2]]))) %>% 
-      pivot_transcript() %>% 
-      left_join(total.pca.se.annotated, by = c(".feature" = "ensembl")) %>% 
-      relocate(c("symbol", "description"), .after = .feature) %>% 
-      mutate(Num.mean = rowMeans(count.df[,count.matrix.index.list[[i]][[1]]])) %>% 
-      mutate(Denum.mean = rowMeans(count.df[,count.matrix.index.list[[i]][[2]]])) %>% 
-      relocate(c("Num.mean", "Denum.mean"), .after = .abundant) %>% 
-      arrange_at(vars(contains("padj"))) %>% 
-      # write_csv(file = "Verneris.CD4.Mixed.HLA-B.vs.Reject.analysis.csv")
-      write_csv(file = paste0("2023_11_09_results/", file.prefix.list[i], ".DEseq2.", script.date, ".csv"))
-    
-    ## Decide how many genes to use for pathway analysis
-    de_deseq2 %>%
-      dplyr::filter(de_deseq2[,12] < alpha.level.list[i]) %>% 
-      pull(.feature) -> num.gene.to.pathway
-    
-    cat("Group", i, ":", length(num.gene.to.pathway), " Genes will be used for Pathway Analysis \n")
-    
-    ## Pathway Analysis
-    if(1){
-        de_deseq2 %>%
-          dplyr::filter(de_deseq2[,12] < alpha.level.list[i]) %>%
-          pull(.feature) -> de_deseq2.Ensembl
-    
-        de_deseq2_pathway = gost(de_deseq2.Ensembl,
-                                 organism = "mmusculus",
-                                 ordered_query = T,
-                                evcodes = T,
-                                custom_bg = de_deseq2$.feature,
-                                sources = c("GO", "KEGG", "REAC")
-        )
-    
-        # Genes responsible for each pathway are in EnsembleID, let's convert them to gene symbol for easier interpretation:
-        de_deseq2_pathway$result$inter.symbol = NA
-        for(j in 1:dim(de_deseq2_pathway$result)[1]){
-          tmp = stringr::str_c(clusterProfiler::bitr(unlist(strsplit(de_deseq2_pathway$result$intersection[j], split = ",")), fromType = "ENSEMBL", toType = "SYMBOL", OrgDb = org.Mm.eg.db)$SYMBOL, collapse = ",")
-          # cat(i, "tmp ", tmp, "\n")
-          de_deseq2_pathway$result$inter.symbol[j] = tmp
-        }
-    
-        de_deseq2_pathway$result %>%
-          relocate(inter.symbol, .after = term_name) %>%
-          write_csv(file = paste(file.prefix.list[i], alpha.level.list[i], "pathway.analysis", script.date, "csv", sep = "."))
-    
-        de_deseq2_pathway$result %>%
-          dplyr::filter(source %in% c("GO:BP", "GO:CC", "KEGG", "REAC", "WP")) %>%
-          mutate(term_name = fct_reorder(term_name, -log10(p_value))) %>%
-          ggplot(aes(x=-log10(p_value), y = term_name, fill = source)) +
-          geom_col() +
-          labs(title = file.prefix.list[i])
-    
-        ggsave(filename = paste(file.prefix.list[i], alpha.level.list[i], "pathway.analysis", script.date, "pdf", sep = "."))
-    }
-}
+colnames(sf.df.dds)
 ```
 
 
@@ -425,70 +314,58 @@ for(i in 10){ ## Temporary/Testloop
 
 
 
+# GeneTonic
+## Enrichment Analysis
 
+I will want to use GeneTonic for pathway analysis, so we will start some enrichment analysis.
 
-
-
-# Subset samples
-
-If necessary, subset here:
-
-```{r}
-# meta_subset <- meta$sample_id |> 
-#   filter()
-```
-
-# Filter count data
-
-I'm saving this code but not running it for now. Our bulk data contains samples of multiple cell types : T, B, and NK cells. Filtering here may not be the right
+First to filter to only significant genes:
 
 ```{r}
-# sf.df.data <- sf.df %>%
-#   ## Select or subset the desired samples 
-#   #dplyr::select(subset.samples) %>%
-#   ## Remove all NA (if any)
-#   drop_na() %>% 
-#   ## Filter low expressors
-#   ### each value must be more than 10
-#   mutate(Rowsum = apply(., 1, function(x) sum(x > 10))) %>% 
-#   ### All values must be more than 10 (set to x if only x value is satisfied)
-#   dplyr::filter(Rowsum == dim(meta)[1]) %>% 
-#   ## No longer need the column "Rowsum", we can remove it
-#   dplyr::select(-Rowsum)
-# 
-# sf.df.data
+mix.4.b.vs.rej.4.anno.enrich <- mix.4.b.vs.rej.4.annotation.filtered |> 
+  filter(padj <= 0.05) |> 
+  pull(gene_symbol)
 ```
 
-# DESeq Object
+Next we need the background genes from the comparison
 
 ```{r}
-class(sf.df.data)
+bg_ids <- deseqresult2df(mix.4.b.vs.rej.4.res) |>  
+  mutate(symbol = mapIds(org.Mm.eg.db, keys = id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) |> 
+  pull(symbol)
+
+length(bg_ids)
 ```
 
-## Create SummarizeExperiment Object
+## Perform Pathway Analysis
 
 ```{r}
-sf.df.se <- SummarizedExperiment(assays = list(counts = as.matrix(sf.df.data)),
-                                colData = meta)
+mix.4.b.vs.rej.4.topgo = pcaExplorer::topGOtable(mix.4.b.vs.rej.4.anno.enrich,
+                                              bg_ids,
+                                              ontology = "BP",
+                                              mapping = "org.Mm.eg.db",
+                                              geneID = "symbol")
+
+### Reshape for Genetonic
+mix.4.b.vs.rej.4.topgo = shake_topGOtableResult(mix.4.b.vs.rej.4.topgo)
+mix.4.b.vs.rej.4.topgo = get_aggrscores(mix.4.b.vs.rej.4.topgo, mix.4.b.vs.rej.4.res, mix.4.b.vs.rej.4.annotation.filtered)
 ```
 
-## Create DESeq Object
+Submit data objects to `Genetonic` web browser.
 
+```{r, eval=FALSE}
+GeneTonic(dds = sf.df.dds,
+          res_de = mix.4.b.vs.rej.4.res,
+          res_enrich = mix.4.b.vs.rej.4.topgo,
+          annotation_obj = sf.df.annotation,
+          project_id = "TEST1")
+```
 ```{r}
-sf.df.dds = DESeqDataSet(sf.df.se, design = ~ group)
+deseqresult2df(mix.4.b.vs.rej.4.res) %>% 
+  dplyr::rename(gene_id = id) %>% 
+  mutate(gene_name = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) %>% 
+  dplyr::select(gene_id, gene_name) -> sf.df.annotation
 ```
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
