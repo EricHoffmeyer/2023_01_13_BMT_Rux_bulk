@@ -14,5 +14,4 @@ Additional data for control CD4 and CD8 T cells (isolated from spleens) was brou
 
 Folders contain the following:
 
-  # Folder one
-## 2023_11_09_results
+# 2023_11_09_results
