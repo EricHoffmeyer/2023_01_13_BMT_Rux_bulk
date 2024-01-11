@@ -25,6 +25,7 @@ library(topGO)
 })
 ```
 
+Creating a folder to store results from this script.
 
 ```{r}
 folder.name <- "2023_11_09_results"
@@ -36,8 +37,7 @@ if(!exists(folder.name)){
 
 # Data Dictionary - Metadata
 
-Read in metadata and create a new column that matches with file folders. 
-  Folder_name will help us read in the sample quant.sf files.
+Read in metadata and create a new column that matches with file folders. Folder_name will help us read in the sample quant.sf files.
 
 ```{r}
 assay.meta <- read.csv(file = "data/metadata/PLX037286_sample_data_eric_ARRANGED.csv") |>
@@ -48,28 +48,25 @@ public.meta <- read_tsv(file = "data/metadata/filereport_read_run_PRJNA448448_ts
 combined_meta <- rbind(assay.meta, public.meta)
 ```
 
-
 # Transcript-Gene-Pair: `tx2gene.df`
 
-Our goal is to sum up all counts of a gene (represented by gene ID) from all its transcripts (represented by transcript ID). First, we will import the mouse gene feature file (GTF) which will help us match the gene id and transcipt id.
+Our goal is to sum up all counts of a gene (represented by gene ID) from all its transcripts (represented by transcript ID). First, we will import the mouse gene feature file (GTF) which will help us match the gene id and transcript id.
 
 ```{r}
-#Load this below
 gtf <-  rtracklayer::import("data/Mus_musculus.GRCm39.110.gtf")
 
-gtf.df <- as.data.frame(gtf)
+gtf_df <- as.data.frame(gtf)
 
-gtf.df
+gtf_df
 ```
 
-### Save/Load `gtf.df`
+### Save/Load `gtf_df`
+
+Saving this to the `data` folder since it is a more general reference file.
 
 ```{r}
-# save(gtf.df, file = "data/mouse39_gtf_df.Rdata")
-```
-
-```{r}
-# gtf.df <- load(file = "data/mouse39_gtf_df.Rdata")
+# save(gtf_df, file = "data/mouse39_gtf_df.Rdata")
+load(file = "data/mouse39_gtf_df.Rdata")
 ```
 
 ## Look up table
@@ -77,7 +74,7 @@ gtf.df
 Create a look-up-table matching gene id to all its transcript ids:
 
 ```{r}
-tx2gene.df <- gtf.df |>
+tx2gene.df <- gtf_df |>
   dplyr::select(transcript_id, gene_id) |>
 	distinct(transcript_id, gene_id) |>
   drop_na() -> tx2gene.df
@@ -87,7 +84,7 @@ tx2gene.df
 
 # Salmon loop
 
-Predefine count table matrix by importing one of Salmon result to determine the number of genes for the table matrix.
+Pre-define count table matrix by importing one of Salmon result to determine the number of genes for the table matrix.
 
 ```{r}
 tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/",
@@ -124,13 +121,13 @@ for(i in seq_along(combined_meta$folder_name)){
 sf.df
 ```
 
-## Save/Load dataset
+## Save/Load sf.df dataset
 
-Save a copy of the Salmon dataset so you don't have to start from scratch in future analyses:
+Save a copy of the Salmon dataset so I don't have to start from scratch in future analyses.
 
 ```{r}
 # save(sf.df, file = "2023_11_09_results/sf.df.Rdata")
-sf.df <- load(file = "2023_11_09_results/sf.df.Rdata")
+load(file = "2023_11_09_results/sf.df.Rdata")
 ```
 
 ## Create salmon data matrix
@@ -152,8 +149,7 @@ coldata
 all(rownames(coldata) %in% colnames(salmon.matrix))
 ```
 
-# DESeq pipleline
-## SummarizedExperiment Object
+# Total SummarizedExperiment (.se) Object
 
 ```{r}
 total.se <- SummarizedExperiment(assays = list(counts = salmon.matrix),
@@ -162,15 +158,14 @@ total.se <- SummarizedExperiment(assays = list(counts = salmon.matrix),
 total.se
 ```
 
-### Save/Load SE object
+## Save/Load total.se object
 
 ```{r}
 # save(total.se, file = "2023_11_09_results/total.se.Rdata")
-total.se <- load(file = "2023_11_09_results/total.se.Rdata")
+load(file = "2023_11_09_results/total.se.Rdata")
 ```
 
-# QC check
-## Scale data
+## QC check and Scale data
 
 ```{r}
 data.frame(colData(total.se))
@@ -190,8 +185,8 @@ colData(total.scaled.se)
 
 ```{r}
 total.pca.se <- total.se |> 
-  tidybulk::keep_abundant() %>%
-  tidybulk::scale_abundance() %>%
+  tidybulk::keep_abundant() |>
+  tidybulk::scale_abundance() |>
   tidybulk::reduce_dimensions(method = "PCA", .dims = 3)
 ```
 
@@ -211,27 +206,9 @@ total.pca.se |>
 
 # DESeq
 
-IN the original run, Tzu creatd a master DESeq loop that ran and output all the comparisons at once. This was too complicated for me to simply copy and paste. I will run a single iteration first. If the results look good, I will create some functions to perform each step individually but perform all comparisons in one code chunk.
+IN the original run, Tzu created a master DESeq loop that ran and output all the comparisons at once. This was too complicated for me to simply copy and paste. I will run a single iteration first. If the results look good, I will create some functions to perform each step individually but perform all comparisons in one code chunk.
 
-## Create DESeq Object
-
-Quick look at metadata again.
-
-```{r}
-combined_meta
-```
-
-All of our comparisons will be done using the `condition` column. So that is our design variable.
-
-```{r}
-sf.df.dds = DESeqDataSet(total.se, design = ~ condition)
-```
-
-Run DESeq.
-
-```{r}
-sf.df.dds = DESeq(sf.df.dds)
-```
+## Subsetting
 
 Quick look at our condition column to help copy/paste for our results function
 
@@ -240,12 +217,86 @@ combined_meta |>
   dplyr::count(condition)
 ```
 
-## Results
+The comparison I want to do is the Mixed CD4 HLA B vs the Reject CD4. I will subset the metadata to just this samples, and use the resulting `folder_name` column to subset the `sf.df` object. 
 
-First comparison: mixed CD4 H2Kb cells vs reject CD4 (also H2Kb) cells.
+Assuming our subset contains similar cells (T cells, e.g.) we can filter the counts now to remove any low/no expression genes. It will harder to filter them out later, not to mention it will take more compute when working with all genes.
+
+Also, if I don't subset the `sf.df`, it will show all samples in the downstream GeneTonic plots.
 
 ```{r}
-mix.4.b.vs.rej.4.res <- results(sf.df.dds,
+subset.vector <- combined_meta |> 
+  dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4") |> 
+  pull(folder_name)
+
+# Subsetting the sf.df first, because I couldn't get the mutate() to work if this code is all in one chunk
+
+sf.df.data.df <-  sf.df |>
+  dplyr::select(all_of(subset.vector))
+
+# Count filtering
+
+sf.df.data.df <- sf.df.data.df |> 
+  mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
+  # All values must be more than 10 (set to x if only x value is satisfied)
+  dplyr::filter(row.sum == length(subset.vector)) |> 
+  # No longer need the column "row.sum", we can remove it
+  dplyr::select(-row.sum) |> 
+  rownames_to_column(var = "gene_id")
+
+# Subset the sf.df
+
+subset.sf.df <- sf.df |> 
+  dplyr::select(all_of(subset.vector))
+
+# Filtering metadata so only relevant samples are put into the DESeq object
+subset_meta <- combined_meta |> 
+  filter(folder_name %in% subset.vector)
+
+```
+
+## Salmon matrix, QC check, and DESeqDataSet (dds) creation
+
+```{r}
+subset.salmon.matrix <- as.matrix(subset.sf.df)
+
+# subset.salmon.matrix <- as.matrix(sf.df)
+
+subset.coldata <- data.frame(sample = subset_meta$folder_name,
+                      condition = as.factor(subset_meta$condition),
+                      row.names = "sample")
+
+# subset.coldata <- data.frame(sample = combined_meta$folder_name,
+#                       condition = as.factor(combined_meta$condition),
+#                       row.names = "sample"
+```
+
+Quick row and column check
+
+```{r}
+all(rownames(subset.coldata) %in% colnames(subset.salmon.matrix))
+```
+
+```{r}
+subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+                           colData = subset.coldata)
+
+# subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+#                             colData = combined_meta)
+
+
+subset.se
+```
+
+```{r}
+subset.dds = DESeqDataSet(subset.se, design = ~ condition)
+```
+
+## Run DESeq
+
+```{r}
+subset.dds = DESeq(subset.dds)
+
+subset.res <- results(subset.dds,
                         contrast = c("condition", "Mixed CD4 HLA B", "Reject CD4"),
                         alpha = 0.05)
 ```
@@ -254,103 +305,91 @@ mix.4.b.vs.rej.4.res <- results(sf.df.dds,
 
 It is good practice to include the raw counts in our DESeq results so we can confirm the comparisons were done correctly.
 
-Including all the column data would be confusing, so let's filter the dataframe to only show the conditions in the DESeq comparison. I also am going to filter out low/no count genes here. Later when we join it to the DESeq results, using `na.omit()` will get rid of all low/no count genes along with unmapped reads.
-
-Then we will change the ensembl id rownames in `sf.df` into a column called `gene_id`. In the next step we will join this to our results dataframe.
-
-```{r}
-subset.vector <- combined_meta |> 
-  dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4")
-
-sf.df.data.df <-  sf.df |>
-  dplyr::select(subset.vector$folder_name)
-
-sf.df.data.df <- sf.df.data.df |> 
-  mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
-  # All values must be more than 10 (set to x if only x value is satisfied)
-  dplyr::filter(row.sum == dim(subset.vector)[1]) |> 
-  # No longer need the column "row.sum", we can remove it
-  dplyr::select(-row.sum) |> 
-  rownames_to_column(var = "gene_id")
-```
-
 Now we turn the results object into a dataframe with gene annotation, and join the the raw counts for the samples in this comparison from `sf.df.data.df`.
 
+
 ```{r}
-mix.4.b.vs.rej.4.annotation <- deseqresult2df(mix.4.b.vs.rej.4.res) |> 
+subset.anno <- deseqresult2df(subset.res) |> 
   dplyr::rename(gene_id = id) |> 
-  mutate(gene_symbol = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) |> 
-  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "ENTREZID", multiVals = "first")) |> 
-  mutate(gene_desc = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "GENENAME", multiVals = "first")) |> 
+  mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "SYMBOL", 
+                              multiVals = "first")) |> 
+  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "ENTREZID", 
+                              multiVals = "first")) |> 
+  mutate(gene_desc = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "GENENAME", 
+                            multiVals = "first")) |> 
   relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
-  left_join(sf.df.data.df, by = c("gene_id"="gene_id")) 
-```
-
-We want to save the DESeq results separately. At this point I want to filter out any genes that have low reads or NA values.
-
-```{r}
-mix.4.b.vs.rej.4.annotation.filtered <- mix.4.b.vs.rej.4.annotation |> 
+  left_join(sf.df.data.df, 
+            by = c("gene_id"="gene_id")) |> 
   na.omit()
 
-write_csv(mix.4.b.vs.rej.4.annotation.filtered, file = paste0(folder.name, "/DESeq_results/mix.4.b.VS.rej.4.b.csv"))
 ```
 
-Stop here and make a function to generate what we've done up to this point.
-Then save:
-          the DESeqDataSet object (do we need a separate one each time? It's the same object)
-          the results object
-          the annotated and filtered csv object.
-
-For the future genetonic, the bg_ids are generate from the results object so no need to double save
-
-
+We want to save the DESeq results separately.
 
 ```{r}
-colnames(sf.df.dds)
+write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/mix.4.b.VS.rej.4.b.csv"))
 ```
 
+# GeneTonic
 
+## GeneTonic Prep
 
+GeneTonic needs:
+  A DESeqDataSet (subset.dds) object, which we already created.
+  A DESEq results object (res), which we also already created.
+  An enriched results object (a results object filtered to significant genes, e.g.)
+  Background gene ids (bg_ids)
+  A gene annotation object 
 
-
-
-
-
-
-
-
-## GeneTonic Annotation
-
-```{r}
-deseqresult2df(subset.res) %>% 
-  dplyr::rename(gene_id = id) %>% 
-  mutate(gene_name = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) %>% 
-  dplyr::select(gene_id, gene_name) -> sf.df.annotation
-
-sf.df.annotation
-```
-
-## Enrichment Analysis
-
-### Extract gene symbol
+### Enriched results object
 
 ```{r}
-deseqresult2df(subset.res) %>% 
-  # rownames_to_column(var = "Ensembl") %>% 
-  mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) %>% 
-  dplyr::filter(padj < 0.05) %>% 
+deseqresult2df(subset.res) |> 
+  # rownames_to_column(var = "Ensembl") |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, 
+                         keys = id, keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  dplyr::filter(padj < 0.05) |> 
   pull(Symbol) -> enrich.of.interest
 length(enrich.of.interest)
 head(enrich.of.interest)
 ```
 
-## Background gene symbol
+### Background gene symbols
 
 ```{r}
-deseqresult2df(subset.res) %>% 
-  mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) %>% 
-  pull(Symbol) -> bg_ids
+bg_ids <- deseqresult2df(subset.res) |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, 
+                         keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  pull(Symbol)
+
 length(bg_ids)
+```
+
+### Gene annotation object
+
+```{r}
+sf.df.anno <- deseqresult2df(subset.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_name = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "SYMBOL", 
+                            multiVals = "first")) |> 
+  dplyr::select(gene_id, gene_name)
+
+sf.df.anno
 ```
 
 ## Perform Pathway Analysis
@@ -363,78 +402,21 @@ subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
                                               geneID = "symbol")
 
 ### Reshape for Genetonic
-subset.topgo = shake_topGOtableResult(subset.topgo)
+subset.topgo <- shake_topGOtableResult(subset.topgo)
 # rownames(mix.4.b.vs.rej.4.topgo) = NULL
-subset.topgo = get_aggrscores(subset.topgo, subset.res, sf.df.annotation)
+subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
 ```
 
+## Run GeneTonic
 
 ```{r, eval=FALSE}
-GeneTonic(dds = subset.sf.df.dds,
+GeneTonic(dds = subset.dds,
           res_de = subset.res,
           res_enrich = subset.topgo,
-          annotation_obj = sf.df.annotation,
+          annotation_obj = sf.df.anno,
           project_id = "TEST1")
 ```
 
 
-```{r}
-subset.sf.df <- sf.df |> 
-  dplyr::select(subset.vector$folder_name)
-
-subset_meta <- combined_meta |> 
-  filter(folder_name %in% subset.vector$folder_name)
-```
-
-```{r}
-subset.salmon.matrix <- as.matrix(subset.sf.df)
-
-subset.coldata <- data.frame(sample = subset_meta$folder_name,
-                      condition = as.factor(subset_meta$condition),
-                      row.names = "sample")
-```
-
-```{r}
-all(rownames(subset.coldata) %in% colnames(subset.salmon.matrix))
-```
-
-```{r}
-subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
-                           colData = subset.coldata)
-
-subset.se
-```
-
-```{r}
-subset.sf.df.dds = DESeqDataSet(subset.se, design = ~ condition)
-```
-
-Run DESeq.
-
-```{r}
-subset.sf.df.dds = DESeq(subset.sf.df.dds)
-
-subset.res <- results(sf.df.dds,
-                        contrast = c("condition", "Mixed CD4 HLA B", "Reject CD4"),
-                        alpha = 0.05)
-```
-
-```{r}
-subset.annotation <- deseqresult2df(subset.res) |> 
-  dplyr::rename(gene_id = id) |> 
-  mutate(gene_symbol = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "SYMBOL", multiVals = "first")) |> 
-  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "ENTREZID", multiVals = "first")) |> 
-  mutate(gene_desc = mapIds(org.Mm.eg.db, keys = gene_id, keytype = "ENSEMBL", column = "GENENAME", multiVals = "first")) |> 
-  relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
-  left_join(sf.df.data.df, by = c("gene_id"="gene_id")) 
-
-subset.annotation.filtered <- subset.annotation |> 
-  na.omit()
-
-```
-
-```{r}
-
-```
 
 
