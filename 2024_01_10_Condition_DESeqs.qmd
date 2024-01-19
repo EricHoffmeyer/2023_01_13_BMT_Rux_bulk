@@ -4,24 +4,22 @@ format: html
 editor: source
 ---
 
+This markdown will create a function to perform DESeq analysis of the BMT Rux bulk dataset. All DESeq comparisons done here will be based on the `condition` variable in the metadata. All comparisons will be done intra strain: B6 vs B6 cells, and Balb vs Balb cells.
+
 # Load Libraries
 
 These libraries are required to perform this RNAseq analysis.
 
 ```{r}
 suppressPackageStartupMessages({
-library(EnsDb.Mmusculus.v79)
 library(tidyverse)
-library(tidybulk)
-library(janitor)
-library(plotly)
-library(ggrepel)
 library(DESeq2)
 library(GeneTonic)
 library(pcaExplorer)
 library(AnnotationDbi)
 library(org.Mm.eg.db)
 library(topGO)
+library(purrr)
 })
 ```
 
@@ -45,12 +43,12 @@ load(file = "2023_11_09_results/sf.df.Rdata")
 # DESeq of subsets by condition; Function creation
 
 ```{r}
-condition_deseq <- function() {
+condition_deseq <- function(con1, con2, name1, name2) {
   
 # Create a vector that has the samples we want to compare
   
 subset.vector <- combined_meta |> 
-  dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4") |> 
+  dplyr::filter(condition == con1 | condition == con2) |> 
   pull(folder_name)
 
 # The next two code bits create sf.df.data.df, a dataframe of the subset samples and filters for low/no counts
@@ -99,7 +97,7 @@ subset.dds = DESeqDataSet(subset.se, design = ~ condition)
 subset.dds = DESeq(subset.dds)
 
 subset.res <- results(subset.dds,
-                        contrast = c("condition", "Mixed CD4 HLA B", "Reject CD4"),
+                        contrast = c("condition", con1, con2),
                         alpha = 0.05)
 
 # Create annotated result dataframe and filter out NA genes
@@ -127,7 +125,7 @@ subset.anno <- deseqresult2df(subset.res) |>
 
 # write csv file
 
-write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", XXX, XXX, ".csv"))
+write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
 
 # GeneTonic Prep
 
@@ -179,25 +177,94 @@ subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
 
 # save info for GeneTonic
 
-save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0("genetonic_results/", XXX, XXX, ".Rdata"))
+save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
 }
 ```
 
-# Creating inputs for function
+# Run function on B6 cells
+
+## Mixed CD4 HLA B
+
+In order to test the function, I will run the comparisons in small chunks, starting with Mixed CD4 HLA B.
 
 ```{r}
-deseq_var <- c("DC2", "ILC1")
+con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B")
+con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4")
+name1 = c("mix.4.b", "mix.4.b", "mix.4.b")
+name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b")
 
-for (i in deseq_var) {
-  condition_deseq()
-}
+mix.cd4.b.vs.groups.b.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.b.vs.groups.b.list, condition_deseq)
+```
+
+## Mixed CD8 HLA B
+
+```{r}
+con1 = c("Mixed CD8-HLA B", "Mixed CD8-HLA B", "Mixed CD8-HLA B")
+con2 = c("Reject CD8", "Autol C57-CD8", "WT control CD8")
+name1 = c("mix.8.b", "mix.8.b", "mix.8.b")
+name2 = c("rej.8.b", "auto.8.b", "wt.con.8.b")
+
+mix.cd8.b.vs.groups.b.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd8.b.vs.groups.b.list, condition_deseq)
+```
+
+## Autologous C57 CD4
+
+```{r}
+con1 = c("Autol C57 CD4", "Autol C57 CD4")
+con2 = c("Reject CD4", "WT control CD4")
+name1 = c("auto.4.b", "auto.4.b")
+name2 = c("rej.4.b", "wt.con.4.b")
+
+auto.4.b.vs.groups.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(auto.4.b.vs.groups.list, condition_deseq)
+```
+
+## Autologous C57 CD8
+
+```{r}
+con1 = c("Autol C57-CD8", "Autol C57-CD8")
+con2 = c("Reject CD8", "WT control CD8")
+name1 = c("auto.8.b", "auto.8.b")
+name2 = c("rej.8.b", "wt.con.8.b")
+
+auto.8.b.vs.groups.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(auto.8.b.vs.groups.list, condition_deseq)
+```
+
+## Balb cells
+
+```{r}
+con1 = c("Mixed CD4-HLA D", "Mixed CD8-HLA D")
+con2 = c("Autol Balb-CD4", "Autol Balb-CD8")
+name1 = c("mix.4.d", "mix.8.d")
+name2 = c("auto.4.d", "auto.8.d")
+
+mix.d.vs.auto.d.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.d.vs.auto.d.list, condition_deseq)
 ```
 
 
+# SessionInfo()
 
-
-
-
-
+```{r}
+sessionInfo()
+```
 
 
