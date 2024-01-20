@@ -1,0 +1,401 @@
+---
+title: "2024_01_18_Group_DESeqs"
+format: html
+editor: source
+---
+
+This markdown will create a function to perform DESeq analysis of the BMT Rux bulk dataset. 
+
+This analysis combines CD4 and CD8 T cells from the different mouse strains and runs DESeqs based on the `group` variable.
+
+I also change the metadata setup slightly so I can can make different filtered versions to put into the DESeq function.
+
+# Load Libraries
+
+These libraries are required to perform this RNAseq analysis.
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(DESeq2)
+library(GeneTonic)
+library(pcaExplorer)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(topGO)
+library(purrr)
+})
+```
+
+
+```{r}
+folder.name <- "2024_01_18_results"
+
+if(!exists(folder.name)){
+  dir.create(folder.name)
+}
+```
+
+# Read in metadata and data
+
+```{r}
+all_meta <- read.csv(file = "2023_11_09_results/combined_meta.csv")
+
+load(file = "2023_11_09_results/sf.df.Rdata")
+```
+
+# DESeq of subsets by group; Function creation
+
+```{r}
+group_deseq <- function(con1, con2, name1, name2) {
+  
+# Create a vector that has the samples we want to compare
+  
+subset.vector <- combined_meta |> 
+  dplyr::filter(group == con1 | group == con2) |> 
+  pull(folder_name)
+
+# The next two code bits create sf.df.data.df, a dataframe of the subset samples and filters for low/no counts
+
+sf.df.data.df <-  sf.df |>
+  dplyr::select(all_of(subset.vector))
+
+sf.df.data.df <- sf.df.data.df |> 
+  mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
+  # All values must be more than 10 (set to x if only x value is satisfied)
+  dplyr::filter(row.sum == length(subset.vector)) |> 
+  # No longer need the column "row.sum", we can remove it
+  dplyr::select(-row.sum) |> 
+  rownames_to_column(var = "gene_id")
+
+# Subset the sf.df
+
+subset.sf.df <- sf.df |> 
+  dplyr::select(all_of(subset.vector))
+
+# Filtering metadata down to subset
+
+subset_meta <- combined_meta |> 
+  filter(folder_name %in% subset.vector)
+
+# Create subset salmon matrix
+
+subset.salmon.matrix <- as.matrix(subset.sf.df)
+
+# Create a dataframe of subset samples and their group, need to created SE object
+
+subset.coldata <- data.frame(sample = subset_meta$folder_name,
+                      group = as.factor(subset_meta$group),
+                      row.names = "sample")
+# Create SE object
+
+subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+                           colData = subset.coldata)
+
+# Create DDS object
+
+subset.dds = DESeqDataSet(subset.se, design = ~ group)
+
+# DESeq and results looking at our subsetted samples
+
+subset.dds = DESeq(subset.dds)
+
+subset.res <- results(subset.dds,
+                        contrast = c("group", con1, con2),
+                        alpha = 0.05)
+
+# Create annotated result dataframe and filter out NA genes
+
+subset.anno <- deseqresult2df(subset.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "SYMBOL", 
+                              multiVals = "first")) |> 
+  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "ENTREZID", 
+                              multiVals = "first")) |> 
+  mutate(gene_desc = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "GENENAME", 
+                            multiVals = "first")) |> 
+  relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
+  left_join(sf.df.data.df, 
+            by = c("gene_id"="gene_id")) |> 
+  na.omit()
+
+# write csv file
+
+write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
+
+# GeneTonic Prep
+
+## Enriched results object
+
+deseqresult2df(subset.res) |> 
+  # rownames_to_column(var = "Ensembl") |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, 
+                         keys = id, keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  dplyr::filter(padj < 0.05) |> 
+  pull(Symbol) -> enrich.of.interest
+length(enrich.of.interest)
+head(enrich.of.interest)
+
+## Background gene symbols
+
+bg_ids <- deseqresult2df(subset.res) |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, 
+                         keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  pull(Symbol)
+
+### Gene annotation object
+
+sf.df.anno <- deseqresult2df(subset.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_name = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "SYMBOL", 
+                            multiVals = "first")) |> 
+  dplyr::select(gene_id, gene_name)
+
+## Perform Pathway Analysis
+
+subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
+                                              bg_ids,
+                                              ontology = "BP",
+                                              mapping = "org.Mm.eg.db",
+                                              geneID = "symbol")
+
+## Reshape for Genetonic
+
+subset.topgo <- shake_topGOtableResult(subset.topgo)
+subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
+
+# save info for GeneTonic
+
+save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+}
+```
+
+# CD4s
+
+## Separate group comparisons
+
+First I will combine the mixed CD4 cells and compare them against the other groups (reject, auto, WT control) individually.
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD4")
+```
+
+```{r}
+con1 = c("Mixed", "Mixed", "Mixed", "Mixed")
+con2 = c("Rejection", "Auto_b6", "Auto_balb", "control_b6")
+name1 = c("mix.4", "mix.4", "mix.4", "mix.4")
+name2 = c("rej.4", "auto.b6", "auto.balb", "wt.con.4")
+
+mix.cd4.vs.groups.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.vs.groups.list, group_deseq)
+```
+
+## Grouped comparisons
+
+### All CD4 mixed vs all CD4 autologous
+
+Now I will make different group combinations and compare the mixed cells vs grouped auto and all non mixed groups.
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD4") |> 
+  mutate(group = ifelse(str_detect(group, "Auto"), "Auto", group))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Auto"
+name1 <- "mix.4"
+name2 <- "all.auto.4"
+
+mix.cd4.vs.auto.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.vs.auto.all.list, group_deseq)
+```
+
+### All CD4 mixed vs all other CD4
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD4") |> 
+  mutate(group = ifelse(str_detect(group, "Mixed"), "Mixed", "Other"))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Other"
+name1 <- "mix.4"
+name2 <- "all.4"
+
+mix.cd4.vs.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.vs.all.list, group_deseq)
+```
+
+
+# CD8s
+
+## Separate group comparisons
+
+First I will combine the mixed CD4 cells and compare them against the other groups (reject, auto, WT control) individually.
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD8")
+```
+
+```{r}
+con1 = c("Mixed", "Mixed", "Mixed", "Mixed")
+con2 = c("Rejection", "Auto_b6", "Auto_balb", "control_b6")
+name1 = c("mix.8", "mix.8", "mix.8", "mix.8")
+name2 = c("rej.8", "auto.b6", "auto.balb", "wt.con.8")
+
+mix.cd8.vs.groups.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd8.vs.groups.list, group_deseq)
+```
+
+## Grouped comparisons
+
+### All CD8 mixed vs all CD8 autologous
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD8") |> 
+  mutate(group = ifelse(str_detect(group, "Auto"), "Auto", group))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Auto"
+name1 <- "mix.8"
+name2 <- "all.auto.8"
+
+mix.cd8.vs.auto.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd8.vs.auto.all.list, group_deseq)
+```
+
+### All CD8 mixed vs all other CD8s
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type == "CD8") |> 
+  mutate(group = ifelse(str_detect(group, "Mixed"), "Mixed", "Other"))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Other"
+name1 <- "mix.8"
+name2 <- "all.8"
+
+mix.cd8.vs.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd8.vs.all.list, group_deseq)
+```
+
+
+# All T cells
+
+## Separate group comparisons
+
+All mixed T cells vs all reject T cell, both auto t cell groups, and all wt control T cells.
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type != "NK")
+
+combined_meta |> 
+  dplyr::count(group)
+```
+
+```{r}
+con1 = c("Mixed", "Mixed", "Mixed", "Mixed")
+con2 = c("Rejection", "Auto_b6", "Auto_balb", "control_b6")
+name1 = c("mix.all", "mix.all", "mix.all", "mix.all")
+name2 = c("rej", "auto.b6", "auto.balb", "wt.con")
+
+mix.all.vs.groups.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.all.vs.groups.list, group_deseq)
+```
+
+### Grouped comparisons
+
+#### All mixed T cells vs all autologous T cells
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type != "NK") |> 
+  mutate(group = ifelse(str_detect(group, "Auto"), "Auto", group))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Auto"
+name1 <- "mix.all"
+name2 <- "auto.all"
+
+mix.all.vs.auto.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.all.vs.auto.all.list, group_deseq)
+```
+
+#### All mixed T cells vs all other T cells
+
+```{r}
+combined_meta <- all_meta |> 
+  filter(cell_type != "NK") |> 
+  mutate(group = ifelse(str_detect(group, "Mixed"), "Mixed", "Other"))
+```
+
+```{r}
+con1 <- "Mixed"
+con2 <- "Other"
+name1 <- "mix.all"
+name2 <- "other.all"
+
+mix.all.vs.other.all.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.all.vs.other.all.list, group_deseq)
+```
+
+
+
+
