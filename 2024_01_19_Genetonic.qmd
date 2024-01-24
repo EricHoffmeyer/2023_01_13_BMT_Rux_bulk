@@ -1,0 +1,91 @@
+---
+title: "2024_01_19_Genetonic"
+format: html
+editor: source
+---
+
+
+# Load Libraries
+
+These libraries are required to perform this RNAseq analysis.
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(GeneTonic)
+library(pheatmap)
+library(EnhancedVolcano)
+})
+```
+
+
+```{r}
+folder.name <- "2024_01_19_results"
+
+if(!exists(folder.name)){
+  dir.create(folder.name)
+}
+```
+
+
+```{r}
+load(file = "2024_01_10_results/genetonic_results/mix.4.d.VS.auto.4.d.Rdata")
+
+deseq.df <- read.csv(file = "2024_01_10_results/deseq_results/mix.4.b.VS.auto.4.b.csv")
+```
+
+## Run GeneTonic
+
+```{r, eval=FALSE}
+GeneTonic(dds = subset.dds,
+          res_de = subset.res,
+          res_enrich = subset.topgo,
+          annotation_obj = sf.df.anno,
+          project_id = "TEST1")
+```
+
+
+# Other plots
+
+## Heatmaps: Filtering DESeq results 
+
+These two chunks will trim the DESeq results to contain only the genes of interest and their counts.
+
+```{r}
+top_25_padj <- deseq.df |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002"))
+```
+
+```{r}
+top_25_log2 <- deseq.df |> 
+  filter(padj <= 0.05) |> 
+  arrange(desc(abs(c(log2FoldChange)))) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  dplyr::slice(1:25)
+```
+
+## Volcano plot of DE genes
+
+```{r}
+EnhancedVolcano(toptable = deseq.df,
+                lab = deseq.df$gene_symbol,
+                x = "log2FoldChange",
+                y = "padj",
+                # xlim =  c(-3, 3),
+                # ylim = c(-0.5, 8),
+                # title = "",
+                # subtitle = "",
+                # FCcutoff = ,
+                pCutoff = 0.05,
+                # #labFace = "bold",
+                legendPosition = "none",
+                caption = ""
+                )
+```
+
+
+
+
