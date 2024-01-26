@@ -20,4 +20,4 @@ Folders contain the following:
 
 ## 2024_01_10_Condition_DESeqs
 
-## 2024_01_19_Genetonic
+## 2024_01_19_Condition_Genetonic
