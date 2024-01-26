@@ -1,0 +1,251 @@
+---
+title: "2024_01_19_Genetonic"
+format: html
+editor: source
+---
+
+
+# Load Libraries and data
+
+These libraries are required to perform this RNAseq analysis.
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(GeneTonic)
+library(pheatmap)
+library(EnhancedVolcano)
+})
+```
+
+```{r}
+meta <- read.csv(file = "2023_11_09_results/combined_meta.csv")
+
+load(file = "2024_01_10_results/genetonic_results/mix.4.d.VS.auto.4.d.Rdata")
+
+deseq.df <- read.csv(file = "2024_01_10_results/deseq_results/mix.4.d.VS.auto.4.d.csv")
+```
+
+# Run GeneTonic
+
+```{r, eval=FALSE}
+GeneTonic(dds = subset.dds,
+          res_de = subset.res,
+          res_enrich = subset.topgo,
+          annotation_obj = sf.df.anno,
+          project_id = "TEST1")
+```
+
+# Plots
+
+There are a lot of comparisons to go through. Previously, it was helpful to look at heatmaps for the top 25 differentially expressed ("DE") genes by log2FC and adjust p value. As well as a volcano map of the DE genes and the pathway summary from GeneTonic. This section will detail generating these plots for one example: Mixed CD4 HLA-D vs Autol Balb-CD4.
+
+## Creating results folders
+
+```{r}
+# Creating folders to store results
+
+folder.name <- "2024_01_19_results"
+
+if(!exists(folder.name)){
+  dir.create(folder.name)}
+
+heatmap.name <- paste0(folder.name, "/heatmaps/")
+
+if(!exists(heatmap.name)){
+  dir.create(heatmap.name)}
+
+volcano.name <- paste0(folder.name, "/volcano_plots/")
+                       
+if(!exists(volcano.name)){
+  dir.create(volcano.name)}
+
+summary.name <- paste0(folder.name, "/summary_plots/")
+                       
+if(!exists(summary.name)){
+  dir.create(summary.name)}
+```
+
+## Heatmaps
+
+### Annotations
+
+The column names in the counts matrix provide the mouse number but are quite long and not informative. Making an annotation dataframe will make the heatmaps more accessible. 
+
+Start by filtering the metadata to the samples in the comparison, and then modifying the names to match the column names of the count matrix. I could create a vector and explicitly list each sample in one of the conditions, but the way I do it below is more amenable to automation via a function.
+
+```{r}
+# Filter metadata for one of the condition comparisons
+subset1 <- meta |> 
+  filter(condition == "Mixed CD4-HLA D") |> 
+  pull(folder_name)
+# change - to . to match column name format
+subset1 <- subset1 |> 
+  str_replace_all("-", ".")
+# R adds X to all column names that start with a number, so we need to add X as well
+subset1 <- paste0("X", subset1)
+# Create the annotation dataframe where the column name is matched with its condition
+anno <- data.frame(sample_name = colnames(top_25_padj)) |> 
+  mutate(condition = ifelse(sample_name %in% subset1, "Mixed CD4-HLA D", "Autol Balb-CD4")) |> 
+  column_to_rownames("sample_name")
+
+# defining colors for the annotation
+condition <- c("orange", "blue")
+names(condition) <- c("Mixed CD4-HLA D", "Autol Balb-CD4")
+anno_colors <- list(condition = condition)
+```
+
+### Create and save heatmaps
+
+```{r}
+# Filter DEseq results to top 25 padj and keep only the counts
+deseq.df |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by p-value") |> 
+         ggsave(filename = paste0(heatmap.name, "mix.4.d.VS.auto.4.d.padj.png"))
+```
+
+```{r}
+deseq.df |> 
+  filter(padj <= 0.05) |> 
+  arrange(desc(abs(c(log2FoldChange)))) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  dplyr::slice(1:25) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by absolute log2FC") |> 
+         ggsave(filename = paste0(heatmap.name, "mix.4.d.VS.auto.4.d.log2FC.png"))
+```
+
+## Volcano plot of DE genes
+
+```{r}
+EnhancedVolcano(toptable = deseq.df,
+                lab = deseq.df$gene_symbol,
+                x = "log2FoldChange",
+                y = "padj",
+                # xlim = c(-3, 3),
+                # ylim = c(-0.5, 8),
+                title = "Mixed CD4-HLA D vs Autol Balb-CD4",
+                subtitle = "DESeq2 Results",
+                # FCcutoff = ,
+                pCutoff = 0.05,
+                # #labFace = "bold",
+                legendPosition = "none",
+                caption = "") |> 
+  ggsave(filename = paste0(volcano.name, "mix.4.d.VS.auto.4.d.volcano.png"))
+```
+
+```{r}
+p <- gs_summary_overview(res_enrich = subset.topgo,
+                    n_gs = 15) +
+  labs(title = "Pathway Enrichment",
+       subtitle = "Mixed CD4-HLA D vs Autol Balb-CD4")
+
+ggsave(filename = paste0(summary.name, "mix.4.d.VS.auto.4.d.summary.png"),
+       plot = p,
+       width = 11,
+       height = 8,
+       units = "in",
+       bg = "white")
+```
+
+# Function to generate plots
+
+Creating a function where:
+  con1 = condition 1
+  con2 = condition 2
+  name1 = abbreviation of condition 1 for file names
+  name2 = abbreviation of condition 2 for files names
+
+```{r}
+plot_results <- function(con1, con2, name1, name2){
+# Filter metadata for one of the condition comparisons
+subset1 <- meta |> 
+  filter(condition == con1) |> 
+  pull(folder_name)
+# change - to . to match column name format
+subset1 <- subset1 |> 
+  str_replace_all("-", ".")
+# R adds X to all column names that start with a number, so we need to add X as well
+subset1 <- paste0("X", subset1)
+# Create the annotation dataframe where the column name is matched with its condition
+anno <- data.frame(sample_name = colnames(top_25_padj)) |> 
+  mutate(condition = ifelse(sample_name %in% subset1, con1, con2)) |> 
+  column_to_rownames("sample_name")
+
+# defining colors for the annotation
+condition <- c("orange", "blue")
+names(condition) <- c(con1, con2)
+anno_colors <- list(condition = condition)
+
+# Top 25 DE by padj heatmap
+deseq.df |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by p-value") |> 
+         ggsave(filename = paste0(heatmap.name, name1, ".VS.", name2, "log2FC.png"))
+
+
+
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# List for function
+
+```{r}
+con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B")
+con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4")
+name1 = c("mix.4.b", "mix.4.b", "mix.4.b")
+name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b")
+
+mix.cd4.b.vs.groups.b.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.b.vs.groups.b.list, condition_deseq)
+```
+
