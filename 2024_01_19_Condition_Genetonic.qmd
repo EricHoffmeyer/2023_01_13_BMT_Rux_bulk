@@ -49,21 +49,6 @@ folder.name <- "2024_01_19_results"
 
 if(!exists(folder.name)){
   dir.create(folder.name)}
-
-heatmap.name <- paste0(folder.name, "/heatmaps/")
-
-if(!exists(heatmap.name)){
-  dir.create(heatmap.name)}
-
-volcano.name <- paste0(folder.name, "/volcano_plots/")
-                       
-if(!exists(volcano.name)){
-  dir.create(volcano.name)}
-
-summary.name <- paste0(folder.name, "/summary_plots/")
-                       
-if(!exists(summary.name)){
-  dir.create(summary.name)}
 ```
 
 ## Heatmaps
@@ -175,6 +160,17 @@ Creating a function where:
 
 ```{r}
 plot_results <- function(con1, con2, name1, name2){
+load(file = paste0("2024_01_10_results/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+deseq.df <- read.csv(file = paste0("2024_01_10_results/deseq_results/", name1, ".VS.", name2, ".csv")) 
+
+results.folder <- paste0(folder.name, "/", name1, ".VS.", name2, "/")
+
+if(!exists(results.folder)){
+  dir.create(results.folder)}
+
+# filter the deseq.df so we can pull out the colnames for the annotation df
+sample.df <- select(deseq.df, -1:-10)
+
 # Filter metadata for one of the condition comparisons
 subset1 <- meta |> 
   filter(condition == con1) |> 
@@ -185,7 +181,7 @@ subset1 <- subset1 |>
 # R adds X to all column names that start with a number, so we need to add X as well
 subset1 <- paste0("X", subset1)
 # Create the annotation dataframe where the column name is matched with its condition
-anno <- data.frame(sample_name = colnames(top_25_padj)) |> 
+anno <- data.frame(sample_name = colnames(sample.df)) |> 
   mutate(condition = ifelse(sample_name %in% subset1, con1, con2)) |> 
   column_to_rownames("sample_name")
 
@@ -198,7 +194,7 @@ anno_colors <- list(condition = condition)
 deseq.df |> 
   dplyr::slice(1:25) |> 
   column_to_rownames(var = "gene_symbol") |> 
-  dplyr::select(contains("L002")) |> 
+  dplyr::select(-1:-9) |> 
   pheatmap(scale = "row",
          fontsize = 12,
          fontsize_row = 11,
@@ -207,45 +203,214 @@ deseq.df |>
          annotation = anno,
          annotation_colors = anno_colors,
          main = "Top 25 genes by p-value") |> 
-         ggsave(filename = paste0(heatmap.name, name1, ".VS.", name2, "log2FC.png"))
+         ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".padj.png"))
 
+#p value heatmap
+deseq.df |> 
+  filter(padj <= 0.05) |> 
+  arrange(desc(abs(c(log2FoldChange)))) |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  select(-1:-9) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by absolute log2FC") |> 
+         ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".log2FC.png"))
 
+#log2FC heatmap
+EnhancedVolcano(toptable = deseq.df,
+                lab = deseq.df$gene_symbol,
+                x = "log2FoldChange",
+                y = "padj",
+                # xlim = c(-3, 3),
+                # ylim = c(-0.5, 8),
+                title = paste(con1, "vs", con2, sep = " "),
+                subtitle = "DESeq2 Results",
+                # FCcutoff = ,
+                pCutoff = 0.05,
+                # #labFace = "bold",
+                legendPosition = "none",
+                caption = "") |> 
+  ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".volcano.png"))
 
+#Pathway summary plot
+p <- gs_summary_overview(res_enrich = subset.topgo, n_gs = 15) +
+  labs(title = "Pathway Enrichment",
+       subtitle = paste(con1, "vs", con2, sep = " "))
+
+ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".pathways.png"),
+       plot = p,
+       width = 11,
+       height = 8,
+       units = "in",
+       bg = "white")
 }
 ```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 # List for function
 
 ```{r}
-con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B")
-con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4")
-name1 = c("mix.4.b", "mix.4.b", "mix.4.b")
-name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b")
+con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD8-HLA B", "Mixed CD8-HLA B", "Mixed CD8-HLA B", "Autol C57 CD4", "Autol C57 CD4", "Autol C57-CD8", "Autol C57-CD8", "Mixed CD4-HLA D", "Mixed CD8-HLA D")
 
-mix.cd4.b.vs.groups.b.list <- c(list(con1), list(con2), list(name1), list(name2))
+con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4", "Reject CD8", "Autol C57-CD8", "WT control CD8", "Reject CD4", "WT control CD4", "Reject CD8", "WT control CD8", "Autol Balb-CD4", "Autol Balb-CD8")
+
+name1 = c("mix.4.b", "mix.4.b", "mix.4.b", "mix.8.b", "mix.8.b", "mix.8.b", "auto.4.b", "auto.4.b", "auto.8.b", "auto.8.b", "mix.4.d", "mix.8.d")
+
+name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b", "rej.8.b", "auto.8.b", "wt.con.8.b", "rej.4.b", "wt.con.4.b", "rej.8.b", "wt.con.8.b", "auto.4.d", "auto.8.d")
+
+function.list <- c(list(con1), list(con2), list(name1), list(name2))
 ```
 
 ```{r}
-pmap(mix.cd4.b.vs.groups.b.list, condition_deseq)
+pmap(function.list, plot_results)
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+This chunk is for isolating a single comparison to troubleshoot any problems
+```{r}
+
+con1 = "Mixed CD8-HLA B"
+
+con2 = "WT control CD8"
+
+name1 = "mix.8.b"
+
+name2 = "wt.con.8.b"
+
+# function.list <- c(list(con1), list(con2), list(name1), list(name2))
+
+load(file = paste0("2024_01_10_results/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+deseq.df <- read.csv(file = paste0("2024_01_10_results/deseq_results/", name1, ".VS.", name2, ".csv")) 
+
+results.folder <- paste0(folder.name, "/", name1, ".VS.", name2, "/")
+
+if(!exists(results.folder)){
+  dir.create(results.folder)}
+
+# filter the deseq.df so we can pull out the colnames for the annotation df
+sample.df <- select(deseq.df, -1:-10)
+
+# Filter metadata for one of the condition comparisons
+subset1 <- meta |> 
+  filter(condition == con1) |> 
+  pull(folder_name)
+# change - to . to match column name format
+subset1 <- subset1 |> 
+  str_replace_all("-", ".")
+# R adds X to all column names that start with a number, so we need to add X as well
+subset1 <- paste0("X", subset1)
+# Create the annotation dataframe where the column name is matched with its condition
+anno <- data.frame(sample_name = colnames(sample.df)) |> 
+  mutate(condition = ifelse(sample_name %in% subset1, con1, con2)) |> 
+  column_to_rownames("sample_name")
+
+# defining colors for the annotation
+condition <- c("orange", "blue")
+names(condition) <- c(con1, con2)
+anno_colors <- list(condition = condition)
+
+# Top 25 DE by padj heatmap
+deseq.df |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(-1:-9) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by p-value") |> 
+         ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".padj.png"))
+
+#p value heatmap
+deseq.df |> 
+  filter(padj <= 0.05) |> 
+  arrange(desc(abs(c(log2FoldChange)))) |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  select(-1:-9) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by absolute log2FC") |> 
+         ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".log2FC.png"))
+
+#log2FC heatmap
+EnhancedVolcano(toptable = deseq.df,
+                lab = deseq.df$gene_symbol,
+                x = "log2FoldChange",
+                y = "padj",
+                # xlim = c(-3, 3),
+                # ylim = c(-0.5, 8),
+                title = paste(con1, "vs", con2, sep = " "),
+                subtitle = "DESeq2 Results",
+                # FCcutoff = ,
+                pCutoff = 0.05,
+                # #labFace = "bold",
+                legendPosition = "none",
+                caption = "") |> 
+  ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".volcano.png"))
+
+#Pathway summary plot
+p <- gs_summary_overview(res_enrich = subset.topgo, n_gs = 15) +
+  labs(title = "Pathway Enrichment",
+       subtitle = paste(con1, "vs", con2, sep = " "))
+
+ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".pathways.png"),
+       plot = p,
+       width = 11,
+       height = 8,
+       units = "in",
+       bg = "white")
+```
+
+```{r}
+rownames(anno) == colnames(sample.df)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
