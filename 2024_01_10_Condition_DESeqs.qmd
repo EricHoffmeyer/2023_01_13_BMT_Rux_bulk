@@ -1,5 +1,5 @@
 ---
-title: "2024_01_10_DESeq_comparisons"
+title: "2024_01_10_Condition_DESeqs"
 format: html
 editor: source
 ---
@@ -45,139 +45,138 @@ load(file = "2023_11_09_results/sf.df.Rdata")
 ```{r}
 condition_deseq <- function(con1, con2, name1, name2) {
   
-# Create a vector that has the samples we want to compare
+  # Create a vector that has the samples we want to compare
+  subset.vector <- combined_meta |> 
+    dplyr::filter(condition == con1 | condition == con2) |> 
+    pull(folder_name)
   
-subset.vector <- combined_meta |> 
-  dplyr::filter(condition == con1 | condition == con2) |> 
-  pull(folder_name)
-
-# The next two code bits create sf.df.data.df, a dataframe of the subset samples and filters for low/no counts
-
-sf.df.data.df <-  sf.df |>
-  dplyr::select(all_of(subset.vector))
-
-sf.df.data.df <- sf.df.data.df |> 
-  mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
-  # All values must be more than 10 (set to x if only x value is satisfied)
-  dplyr::filter(row.sum == length(subset.vector)) |> 
-  # No longer need the column "row.sum", we can remove it
-  dplyr::select(-row.sum) |> 
-  rownames_to_column(var = "gene_id")
-
-# Subset the sf.df
-
-subset.sf.df <- sf.df |> 
-  dplyr::select(all_of(subset.vector))
-
-# Filtering metadata down to subset
-
-subset_meta <- combined_meta |> 
-  filter(folder_name %in% subset.vector)
-
-# Create subset salmon matrix
-
-subset.salmon.matrix <- as.matrix(subset.sf.df)
-
-# Create a dataframe of subset samples and their condition, need to created SE object
-
-subset.coldata <- data.frame(sample = subset_meta$folder_name,
-                      condition = as.factor(subset_meta$condition),
-                      row.names = "sample")
-# Create SE object
-
-subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
-                           colData = subset.coldata)
-
-# Create DDS object
-
-subset.dds = DESeqDataSet(subset.se, design = ~ condition)
-
-# DESeq and results looking at our subsetted samples
-
-subset.dds = DESeq(subset.dds)
-
-subset.res <- results(subset.dds,
-                        contrast = c("condition", con1, con2),
-                        alpha = 0.05)
-
-# Create annotated result dataframe and filter out NA genes
-
-subset.anno <- deseqresult2df(subset.res) |> 
-  dplyr::rename(gene_id = id) |> 
-  mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+  # The next two code bits create sf.df.data.df, a dataframe of the subset samples and filters for low/no counts
+  
+  sf.df.data.df <-  sf.df |>
+    dplyr::select(all_of(subset.vector))
+  
+  sf.df.data.df <- sf.df.data.df |> 
+    mutate(row.sum = apply(sf.df.data.df, 1, function(x) sum(x > 10))) |> 
+    # All values must be more than 10 (set to x if only x value is satisfied)
+    dplyr::filter(row.sum == length(subset.vector)) |> 
+    # No longer need the column "row.sum", we can remove it
+    dplyr::select(-row.sum) |> 
+    rownames_to_column(var = "gene_id")
+  
+  # Subset the sf.df
+  
+  subset.sf.df <- sf.df |> 
+    dplyr::select(all_of(subset.vector))
+  
+  # Filtering metadata down to subset
+  
+  subset_meta <- combined_meta |> 
+    filter(folder_name %in% subset.vector)
+  
+  # Create subset salmon matrix
+  
+  subset.salmon.matrix <- as.matrix(subset.sf.df)
+  
+  # Create a dataframe of subset samples and their condition, need to created SE object
+  
+  subset.coldata <- data.frame(sample = subset_meta$folder_name,
+                        condition = as.factor(subset_meta$condition),
+                        row.names = "sample")
+  # Create SE object
+  
+  subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+                             colData = subset.coldata)
+  
+  # Create DDS object
+  
+  subset.dds = DESeqDataSet(subset.se, design = ~ condition)
+  
+  # DESeq and results looking at our subsetted samples
+  
+  subset.dds = DESeq(subset.dds)
+  
+  subset.res <- results(subset.dds,
+                          contrast = c("condition", con1, con2),
+                          alpha = 0.05)
+  
+  # Create annotated result dataframe and filter out NA genes
+  
+  subset.anno <- deseqresult2df(subset.res) |> 
+    dplyr::rename(gene_id = id) |> 
+    mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+                                keys = gene_id, 
+                                keytype = "ENSEMBL", 
+                                column = "SYMBOL", 
+                                multiVals = "first")) |> 
+    mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, 
+                                keytype = "ENSEMBL", 
+                                column = "ENTREZID", 
+                                multiVals = "first")) |> 
+    mutate(gene_desc = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "GENENAME", 
+                              multiVals = "first")) |> 
+    relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
+    left_join(sf.df.data.df, 
+              by = c("gene_id"="gene_id")) |> 
+    na.omit()
+  
+  # write csv file
+  
+  write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
+  
+  # GeneTonic Prep
+  
+  ## Enriched results object
+  
+  deseqresult2df(subset.res) |> 
+    # rownames_to_column(var = "Ensembl") |> 
+    mutate(Symbol = mapIds(org.Mm.eg.db, 
+                           keys = id, keytype = "ENSEMBL", 
+                           column = "SYMBOL", 
+                           multiVals = "first")) |> 
+    dplyr::filter(padj < 0.05) |> 
+    pull(Symbol) -> enrich.of.interest
+  length(enrich.of.interest)
+  head(enrich.of.interest)
+  
+  ## Background gene symbols
+  
+  bg_ids <- deseqresult2df(subset.res) |> 
+    mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, 
+                           keytype = "ENSEMBL", 
+                           column = "SYMBOL", 
+                           multiVals = "first")) |> 
+    pull(Symbol)
+  
+  ### Gene annotation object
+  
+  sf.df.anno <- deseqresult2df(subset.res) |> 
+    dplyr::rename(gene_id = id) |> 
+    mutate(gene_name = mapIds(org.Mm.eg.db, 
                               keys = gene_id, 
                               keytype = "ENSEMBL", 
                               column = "SYMBOL", 
                               multiVals = "first")) |> 
-  mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, 
-                              keytype = "ENSEMBL", 
-                              column = "ENTREZID", 
-                              multiVals = "first")) |> 
-  mutate(gene_desc = mapIds(org.Mm.eg.db, 
-                            keys = gene_id, 
-                            keytype = "ENSEMBL", 
-                            column = "GENENAME", 
-                            multiVals = "first")) |> 
-  relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
-  left_join(sf.df.data.df, 
-            by = c("gene_id"="gene_id")) |> 
-  na.omit()
-
-# write csv file
-
-write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
-
-# GeneTonic Prep
-
-## Enriched results object
-
-deseqresult2df(subset.res) |> 
-  # rownames_to_column(var = "Ensembl") |> 
-  mutate(Symbol = mapIds(org.Mm.eg.db, 
-                         keys = id, keytype = "ENSEMBL", 
-                         column = "SYMBOL", 
-                         multiVals = "first")) |> 
-  dplyr::filter(padj < 0.05) |> 
-  pull(Symbol) -> enrich.of.interest
-length(enrich.of.interest)
-head(enrich.of.interest)
-
-## Background gene symbols
-
-bg_ids <- deseqresult2df(subset.res) |> 
-  mutate(Symbol = mapIds(org.Mm.eg.db, keys = id, 
-                         keytype = "ENSEMBL", 
-                         column = "SYMBOL", 
-                         multiVals = "first")) |> 
-  pull(Symbol)
-
-### Gene annotation object
-
-sf.df.anno <- deseqresult2df(subset.res) |> 
-  dplyr::rename(gene_id = id) |> 
-  mutate(gene_name = mapIds(org.Mm.eg.db, 
-                            keys = gene_id, 
-                            keytype = "ENSEMBL", 
-                            column = "SYMBOL", 
-                            multiVals = "first")) |> 
-  dplyr::select(gene_id, gene_name)
-
-## Perform Pathway Analysis
-
-subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
-                                              bg_ids,
-                                              ontology = "BP",
-                                              mapping = "org.Mm.eg.db",
-                                              geneID = "symbol")
-
-## Reshape for Genetonic
-
-subset.topgo <- shake_topGOtableResult(subset.topgo)
-subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
-
-# save info for GeneTonic
-
-save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+    dplyr::select(gene_id, gene_name)
+  
+  ## Perform Pathway Analysis
+  
+  subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
+                                                bg_ids,
+                                                ontology = "BP",
+                                                mapping = "org.Mm.eg.db",
+                                                geneID = "symbol")
+  
+  ## Reshape for Genetonic
+  
+  subset.topgo <- shake_topGOtableResult(subset.topgo)
+  subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
+  
+  # save info for GeneTonic
+  
+  save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
 }
 ```
 
