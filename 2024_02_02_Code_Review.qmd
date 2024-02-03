@@ -1,0 +1,731 @@
+---
+title: "2024_02_20_Code_Review"
+format: html
+editor: source
+  markdown: 
+    wrap: 100
+---
+
+# Experimental Design
+
+![](Code%20Review%20Figures/Mouse%20Design.png)
+
+This markdown will walk through the process behind three of my other notebooks: `2023_11_09_bulk_processing`, `2024_01_10_Condition_DESeqs`, `2024_01_19_Condition_Genetonic.qmd`
+
+# Load Libraries
+
+These libraries are required.
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(DESeq2)
+library(pcaExplorer)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(topGO)
+library(purrr)
+library(GeneTonic)
+library(pheatmap)
+library(EnhancedVolcano)
+})
+```
+
+```{r}
+options(future.globals.maxSize = 14000 * 1024^2)
+```
+
+# Read in metadata
+
+```{r}
+meta <- read.csv(file = "2023_11_09_results/combined_meta.csv")
+
+meta
+```
+
+# DESeq and GeneTonic object creation
+
+## Organization: Creating Result Folders
+
+I will create two results: DESeq results tables (.csv) GeneTonic objects (.Rdata)
+
+The original script that did was created 2024_01_10. Keeping names consistent for this walkthrough.
+
+```{r}
+folder.names <- c("2024_01_10_results", "2024_01_10_results/deseq_results", "2024_01_10_results/genetonic_results")
+
+for (i in folder.names) {
+  if(!exists(i)){
+    dir.create(i)
+  }
+}
+```
+
+## Creating counts matrix
+
+### Create and save/load gtf_df
+
+Import the mouse gene feature file
+
+```{r}
+gtf <-  rtracklayer::import("data/Mus_musculus.GRCm39.110.gtf")
+
+gtf_df <- as.data.frame(gtf)
+
+gtf_df
+```
+
+Create a look-up-table matching gene id to all its transcript ids:
+
+```{r}
+tx2gene.df <- gtf_df |>
+  dplyr::select(transcript_id, gene_id) |>
+	distinct(transcript_id, gene_id) |>
+  drop_na() -> tx2gene.df
+
+tx2gene.df
+```
+
+### Read in salmon quant.sf files using a loop
+
+Pre-define count table matrix by importing one of Salmon result to determine the number of genes for the table matrix.
+
+```{r}
+tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/",
+                          meta$folder_name[1], "/quant.sf")) |>
+  mutate(Name = str_sub(Name, end=-3)) |>
+  inner_join(tx2gene.df, by=c("Name"="transcript_id")) |>
+  group_by(gene_id) |>
+  summarise(NumReads=as.integer(sum(NumReads)))
+tmp
+```
+
+Now we can pre-define an empty data matrix to the correct dimensions. Then we will perform a loop to read the quant files and fill in the data matrix on column at a time.
+
+```{r}
+sf.df <-  data.frame(matrix(0, 
+                            nrow = length(tmp$gene_id),
+                            ncol = length(meta$folder_name)))
+
+colnames(sf.df) <-  meta$folder_name
+rownames(sf.df) <-  tmp$gene_id
+
+for(i in seq_along(meta$folder_name)){
+  cat("Now reading...", meta$folder_name[i], "\n")
+  
+  sf.df[,i] <-  read.delim(paste0("data/raw_data/salmon_output_files/", meta$folder_name[i], "/quant.sf")) |>
+    mutate(Name = str_sub(Name, end = -3)) |>
+    inner_join(tx2gene.df, by = c("Name" = "transcript_id")) |>
+    group_by(gene_id) |>
+    summarise(NumReads = as.integer(sum(NumReads))) |>
+    pull(NumReads)
+}
+```
+
+```{r}
+sf.df
+```
+
+```{r}
+rm(gtf_df, tx2gene.df)
+```
+
+## DESeq analysis
+
+In a smaller bulk RNAseq dataset, where you have only one or two conditions, the counts table would be filtered for low reads as the next step.
+
+However, this dataset has multiple cell types and other variables like mouse strain (H2Kb/H2Kd).
+
+I want to create a subset that contains the appropriate columns for my comparison of interest before filtering for reads.
+
+Let's look at the conditions. I'm only interested in T cells right now so I'll remove the NK cell samples.
+
+```{r}
+combined_meta |> 
+  dplyr::filter(cell_type != "NK") |> 
+  dplyr::count(condition)
+```
+
+This comparison will use the following: condition 1 : "Mixed CD4 HLA B" condition 2 : "Reject CD4"
+
+I will use shorthand versions of these groups when writing results files: name 1 : "mix.4.b" name 2 : "rej.4.b"
+
+```{r}
+# Subset metadata to the conditions of interest and pull out those sample names
+subset.vector <- meta |> 
+  dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4") |> 
+  pull(folder_name)
+
+# Subset the sf.df
+subset.sf.df <- sf.df |> 
+  dplyr::select(all_of(subset.vector)) 
+
+# Use subset.vector to filter the original sf.df object
+subset.sf.df <- subset.sf.df |> 
+  mutate(row.sum = apply(subset.sf.df, 1, function(x) sum(x > 10))) |> 
+  # All values must be more than 10 (set to x if only x value is satisfied)
+  dplyr::filter(row.sum == length(subset.vector)) |> 
+  # Remove row.sum, it is not needing moving forward
+  dplyr::select(-row.sum)
+
+# Filtering metadata so only relevant samples are put into the DESeq object
+subset_meta <- meta |> 
+  filter(folder_name %in% subset.vector)
+
+subset.vector
+subset_meta
+```
+
+### Salmon matrix, QC check, and DESeqDataSet (dds) creation
+
+```{r}
+subset.salmon.matrix <- as.matrix(subset.sf.df)
+
+subset.coldata <- data.frame(sample = subset_meta$folder_name,
+                      condition = as.factor(subset_meta$condition),
+                      row.names = "sample")
+```
+
+Quick row and column check
+
+```{r}
+all(rownames(subset.coldata) %in% colnames(subset.salmon.matrix))
+```
+
+```{r}
+subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+                           colData = subset.coldata)
+subset.se
+```
+
+```{r}
+subset.dds = DESeqDataSet(subset.se, design = ~ condition)
+```
+
+### Run DESeq
+
+```{r}
+subset.dds = DESeq(subset.dds)
+
+subset.res <- results(subset.dds,
+                        contrast = c("condition", "Mixed CD4 HLA B", "Reject CD4"),
+                        alpha = 0.05)
+```
+
+### DESeq results in an annotated table
+
+Now we turn the results object into a dataframe with gene annotation, add some extra annotation (gene_symbol, gene_entrez, gene_desc) and use `left_join` to include the raw count data. Converting the Ensembl ID row names of `subset.sf.df` allows us to join the raw counts to the result dataframe by the shared Ensembl ID column called `gene_id` in both dataframes.
+
+It is good practice to include the raw counts in the results to confirm the comparisons were done correctly.
+
+```{r}
+subset.ids <- subset.sf.df |> 
+  rownames_to_column(var = "gene_id")
+
+subset.anno <- deseqresult2df(subset.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "SYMBOL", 
+                              multiVals = "first")) |> 
+  mutate(gene_entrez = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "ENTREZID", 
+                              multiVals = "first")) |> 
+  mutate(gene_desc = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "GENENAME", 
+                            multiVals = "first")) |> 
+  relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
+  left_join(subset.ids, 
+            by = c("gene_id"="gene_id")) |> 
+  na.omit()
+
+subset.anno
+```
+
+Save the DESeq results separately.
+
+```{r}
+write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/mix.4.b.VS.rej.4.b.csv"))
+```
+
+## GeneTonic
+
+### GeneTonic Prep
+
+GeneTonic needs: A DESeqDataSet (`subset.dds`) object, which we already created. A DESEq results object (`res`), which we also already created. An enriched results object (a DESeq results object filtered to significant genes, `.topgo`) Background gene ids (`bg_ids`) A gene annotation object (`anno`)
+
+#### Enriched results object
+
+```{r}
+deseqresult2df(subset.res) |> 
+  # rownames_to_column(var = "Ensembl") |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, 
+                         keys = id, keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  dplyr::filter(padj < 0.05) |> 
+  pull(Symbol) -> enrich.of.interest
+length(enrich.of.interest)
+
+head(enrich.of.interest)
+```
+
+#### Background gene symbols
+
+```{r}
+bg_ids <- deseqresult2df(subset.res) |> 
+  mutate(Symbol = mapIds(org.Mm.eg.db, 
+                         keys = id, 
+                         keytype = "ENSEMBL", 
+                         column = "SYMBOL", 
+                         multiVals = "first")) |> 
+  pull(Symbol)
+
+length(bg_ids)
+```
+
+#### Gene annotation object
+
+```{r}
+sf.df.anno <- deseqresult2df(subset.res) |> 
+  dplyr::rename(gene_id = id) |> 
+  mutate(gene_name = mapIds(org.Mm.eg.db, 
+                            keys = gene_id, 
+                            keytype = "ENSEMBL", 
+                            column = "SYMBOL", 
+                            multiVals = "first")) |> 
+  dplyr::select(gene_id, gene_name)
+
+sf.df.anno
+```
+
+### Perform Pathway Analysis
+
+```{r}
+subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
+                                       bg_ids,
+                                       ontology = "BP",
+                                       mapping = "org.Mm.eg.db",
+                                       geneID = "symbol")
+
+### Reshape for Genetonic
+subset.topgo <- shake_topGOtableResult(subset.topgo)
+# rownames(mix.4.b.vs.rej.4.topgo) = NULL
+subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
+
+subset.topgo
+```
+
+### Save Genetonic object
+
+```{r}
+save(subset.dds, subset.res, subset.topgo, sf.df.anno, 
+     file = "2024_01_10_results/genetonic_results/mix.4.b.VS.rej.4.b.Rdata")
+```
+
+### Run GeneTonic
+
+```{r, eval=FALSE}
+GeneTonic(dds = subset.dds,
+          res_de = subset.res,
+          res_enrich = subset.topgo,
+          annotation_obj = sf.df.anno,
+          project_id = "Mixed CD4 H2Kb vs Reject CD4 H2Kb")
+```
+
+------------------------------------------------------------------------
+
+# DESeq Loop
+
+Now that we have run through the code with a single example, let's build a function that can do it all for us.
+
+T
+
+The code chunk below is quite large, but it essentially just the last \~10 code chunks combined into one.
+
+```{r}
+condition_deseq <- function(con1, con2, name1, name2) {
+  
+  # Create a vector that has the samples we want to compare
+  subset.vector <- combined_meta |> 
+    dplyr::filter(condition == con1 | condition == con2) |> 
+    pull(folder_name)
+  
+  # Subset the sf.df
+  subset.sf.df <- sf.df |> 
+    dplyr::select(all_of(subset.vector)) 
+  
+  # Filter out low counts
+  subset.sf.df <- subset.sf.df |> 
+    mutate(row.sum = apply(subset.sf.df, 1, function(x) sum(x > 10))) |> 
+    # All values must be more than 10 (set to x if only x value is satisfied)
+    dplyr::filter(row.sum == length(subset.vector)) |> 
+    # Remove row.sum, it is not needing moving forward
+    dplyr::select(-row.sum)
+
+# Filtering metadata so only relevant samples are put into the DESeq object
+  subset_meta <- meta |> 
+    filter(folder_name %in% subset.vector))
+  
+  # Create subset salmon matrix
+  
+  subset.salmon.matrix <- as.matrix(subset.sf.df)
+  
+  # Create a dataframe of subset samples and their condition, need to created SE object
+  
+  subset.coldata <- data.frame(sample = subset_meta$folder_name,
+                        condition = as.factor(subset_meta$condition),
+                        row.names = "sample")
+  # Create SE object
+  
+  subset.se <- SummarizedExperiment(assays = list(counts = subset.salmon.matrix),
+                             colData = subset.coldata)
+  
+  # Create DDS object
+  
+  subset.dds = DESeqDataSet(subset.se, design = ~ condition)
+  
+  # DESeq and results looking at our subsetted samples
+  
+  subset.dds = DESeq(subset.dds)
+  
+  subset.res <- results(subset.dds,
+                          contrast = c("condition", con1, con2),
+                          alpha = 0.05)
+  
+  # Create annotated results, join it to raw counts, and filter out NA genes
+  
+  subset.ids <- subset.sf.df |> 
+  rownames_to_column(var = "gene_id")
+
+  subset.anno <- deseqresult2df(subset.res) |> 
+    dplyr::rename(gene_id = id) |> 
+    mutate(gene_symbol = mapIds(org.Mm.eg.db, 
+                                keys = gene_id, 
+                                keytype = "ENSEMBL", 
+                                column = "SYMBOL", 
+                                multiVals = "first")) |> 
+    mutate(gene_entrez = mapIds(org.Mm.eg.db, keys = gene_id, 
+                                keytype = "ENSEMBL", 
+                                column = "ENTREZID", 
+                                multiVals = "first")) |> 
+    mutate(gene_desc = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "GENENAME", 
+                              multiVals = "first")) |> 
+    relocate(gene_symbol, gene_entrez, gene_desc, .after = gene_id) |> 
+    left_join(subset.ids, 
+              by = c("gene_id"="gene_id")) |> 
+    na.omit()
+  
+  # write csv file
+  
+  write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
+  
+  # GeneTonic Prep
+  
+  ## Enriched results object
+  
+  deseqresult2df(subset.res) |> 
+    # rownames_to_column(var = "Ensembl") |> 
+    mutate(Symbol = mapIds(org.Mm.eg.db, 
+                           keys = id, 
+                           keytype = "ENSEMBL", 
+                           column = "SYMBOL", 
+                           multiVals = "first")) |> 
+    dplyr::filter(padj < 0.05) |> 
+    pull(Symbol) -> enrich.of.interest
+  
+  ## Background gene symbols
+  
+  bg_ids <- deseqresult2df(subset.res) |> 
+    mutate(Symbol = mapIds(org.Mm.eg.db, 
+                           keys = id, 
+                           keytype = "ENSEMBL", 
+                           column = "SYMBOL", 
+                           multiVals = "first")) |> 
+    pull(Symbol)
+  
+  ### Gene annotation object
+  
+  sf.df.anno <- deseqresult2df(subset.res) |> 
+    dplyr::rename(gene_id = id) |> 
+    mutate(gene_name = mapIds(org.Mm.eg.db, 
+                              keys = gene_id, 
+                              keytype = "ENSEMBL", 
+                              column = "SYMBOL", 
+                              multiVals = "first")) |> 
+    dplyr::select(gene_id, gene_name)
+  
+  ## Perform Pathway Analysis
+  
+  subset.topgo = pcaExplorer::topGOtable(enrich.of.interest,
+                                         bg_ids,
+                                         ontology = "BP",
+                                         mapping = "org.Mm.eg.db",
+                                         geneID = "symbol")
+  
+  ## Reshape for Genetonic
+  
+  subset.topgo <- shake_topGOtableResult(subset.topgo)
+  subset.topgo <- get_aggrscores(subset.topgo, subset.res, sf.df.anno)
+  
+  # save info for GeneTonic
+  
+  save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+}
+```
+
+Test run of the function using CD4 T cells that are all from black 6 mice (H2Kb)
+
+```{r}
+con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B")
+con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4")
+name1 = c("mix.4.b", "mix.4.b", "mix.4.b")
+name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b")
+
+mix.cd4.b.vs.groups.b.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(mix.cd4.b.vs.groups.b.list, condition_deseq)
+```
+
+------------------------------------------------------------------------
+
+Next!
+
+# Generating heatmaps, volcano plots, and GeneTonic plots
+
+## Single comparison walkthrough
+
+Creating a new folder for these results. This time around, I am creating 4 plots for every comparison.
+
+I could create a folder for heatmaps, one for volcano plots, etc...
+
+But that is hard to navigate. I think it would be better for each comparison to have it's own folder that contains the relevant plots. We'll let the function do that for us as well.
+
+```{r}
+folder.name <- "2024_01_19_results"
+
+if(!exists(folder.name)){
+  dir.create(folder.name)}
+```
+
+### Heatmap generation
+
+The column names in the counts matrix provide the mouse number but are quite long and not informative. Making an annotation dataframe will make the heatmaps more accessible.
+
+```{r}
+# Filter metadata for one of the condition comparisons
+subset1 <- meta |> 
+  filter(condition == "Mixed CD4 HLA B") |> 
+  pull(folder_name)
+# change - to . to match column name format
+subset1 <- subset1 |> 
+  str_replace_all("-", ".")
+# R adds X to all column names that start with a number, so we need to add X as well
+subset1 <- paste0("X", subset1)
+# Create the annotation dataframe where the column name is matched with its condition
+anno <- data.frame(sample_name = colnames(top_25_padj)) |> 
+  mutate(condition = ifelse(sample_name %in% subset1, "Mixed CD4 HLA B", "Reject CD4")) |> 
+  column_to_rownames("sample_name")
+
+# defining colors for the annotation
+condition <- c("orange", "blue")
+names(condition) <- c("Mixed CD4 HLA B", "Reject CD4")
+anno_colors <- list(condition = condition)
+```
+
+### Create and save heatmaps
+
+```{r}
+# Filter DEseq results to top 25 padj and keep only the counts
+deseq.df |> 
+  dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by p-value") |> 
+         ggsave(filename = paste0(heatmap.name, "mix.4.b.VS.rej.4.b.padj.png"))
+```
+
+```{r}
+deseq.df |> 
+  filter(padj <= 0.05) |> 
+  arrange(desc(abs(c(log2FoldChange)))) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(contains("L002")) |> 
+  dplyr::slice(1:25) |> 
+  pheatmap(scale = "row",
+         fontsize = 12,
+         fontsize_row = 11,
+         show_colnames = FALSE,
+         treeheight_col = 0,
+         annotation = anno,
+         annotation_colors = anno_colors,
+         main = "Top 25 genes by absolute log2FC") |> 
+         ggsave(filename = paste0(heatmap.name, "mix.4.b.VS.rej.4.b.log2FC.png"))
+```
+
+## Volcano plot of DE genes
+
+```{r}
+EnhancedVolcano(toptable = deseq.df,
+                lab = deseq.df$gene_symbol,
+                x = "log2FoldChange",
+                y = "padj",
+                # xlim = c(-3, 3),
+                # ylim = c(-0.5, 8),
+                title = "Mixed CD4 HLA B vs Reject CD4",
+                subtitle = "DESeq2 Results",
+                # FCcutoff = ,
+                pCutoff = 0.05,
+                # #labFace = "bold",
+                legendPosition = "none",
+                caption = "") |> 
+  ggsave(filename = paste0(volcano.name, "mix.4.b.VS.rej.4.b.volcano.png"))
+```
+
+## GeneTonic Pathway summary plot
+
+```{r}
+p <- gs_summary_overview(res_enrich = subset.topgo,
+                    n_gs = 15) +
+  labs(title = "Pathway Enrichment",
+       subtitle = "Mixed CD4 HLA B vs Reject CD4")
+
+ggsave(filename = paste0(summary.name, "mix.4.b.VS.rej.4.b.summary.png"),
+       plot = p,
+       width = 11,
+       height = 8,
+       units = "in",
+       bg = "white")
+```
+
+------------------------------------------------------------------------
+
+```{r}
+plot_results <- function(con1, con2, name1, name2){
+  
+  load(file = paste0("2024_01_10_results/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+  deseq.df <- read.csv(file = paste0("2024_01_10_results/deseq_results/", name1, ".VS.", name2, ".csv")) 
+  
+  results.folder <- paste0(folder.name, "/", name1, ".VS.", name2, "/")
+  
+  if(!exists(results.folder)){
+    dir.create(results.folder)}
+  
+  # filter the deseq.df so we can pull out the colnames for the annotation df
+  sample.df <- select(deseq.df, -1:-10)
+  
+  # Filter metadata for one of the condition comparisons
+  subset1 <- meta |> 
+    filter(condition == con1) |> 
+    pull(folder_name)
+  # change - to . to match column name format
+  subset1 <- subset1 |> 
+    str_replace_all("-", ".")
+  # R adds X to all column names that start with a number, so we need to add X as well
+  subset1 <- paste0("X", subset1)
+  # Create the annotation dataframe where the column name is matched with its condition
+  anno <- data.frame(sample_name = colnames(sample.df)) |> 
+    mutate(condition = ifelse(sample_name %in% subset1, con1, con2)) |> 
+    column_to_rownames("sample_name")
+  
+  # defining colors for the annotation
+  condition <- c("orange", "blue")
+  names(condition) <- c(con1, con2)
+  anno_colors <- list(condition = condition)
+  
+  # Top 25 DE by padj heatmap
+  deseq.df |> 
+    dplyr::slice(1:25) |> 
+    column_to_rownames(var = "gene_symbol") |> 
+    dplyr::select(-1:-9) |> 
+    pheatmap(scale = "row",
+           fontsize = 12,
+           fontsize_row = 11,
+           show_colnames = FALSE,
+           treeheight_col = 0,
+           annotation = anno,
+           annotation_colors = anno_colors,
+           main = "Top 25 genes by p-value") |> 
+           ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".padj.png"))
+  
+  #p value heatmap
+  deseq.df |> 
+    filter(padj <= 0.05) |> 
+    arrange(desc(abs(c(log2FoldChange)))) |> 
+    dplyr::slice(1:25) |> 
+    column_to_rownames(var = "gene_symbol") |> 
+    select(-1:-9) |> 
+    pheatmap(scale = "row",
+           fontsize = 12,
+           fontsize_row = 11,
+           show_colnames = FALSE,
+           treeheight_col = 0,
+           annotation = anno,
+           annotation_colors = anno_colors,
+           main = "Top 25 genes by absolute log2FC") |> 
+           ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".log2FC.png"))
+  
+  #log2FC heatmap
+  EnhancedVolcano(toptable = deseq.df,
+                  lab = deseq.df$gene_symbol,
+                  x = "log2FoldChange",
+                  y = "padj",
+                  # xlim = c(-3, 3),
+                  # ylim = c(-0.5, 8),
+                  title = paste(con1, "vs", con2, sep = " "),
+                  subtitle = "DESeq2 Results",
+                  # FCcutoff = ,
+                  pCutoff = 0.05,
+                  # #labFace = "bold",
+                  legendPosition = "none",
+                  caption = "") |> 
+    ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".volcano.png"))
+  
+  #Pathway summary plot
+  p <- gs_summary_overview(res_enrich = subset.topgo, n_gs = 15) +
+    labs(title = "Pathway Enrichment",
+         subtitle = paste(con1, "vs", con2, sep = " "))
+  
+  ggsave(filename = paste0(results.folder, name1, ".VS.", name2, ".pathways.png"),
+         plot = p,
+         width = 11,
+         height = 8,
+         units = "in",
+         bg = "white")
+}
+```
+
+# List for function
+
+```{r}
+con1 = c("Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD4 HLA B", "Mixed CD8-HLA B", "Mixed CD8-HLA B", "Mixed CD8-HLA B", "Autol C57 CD4", "Autol C57 CD4", "Autol C57-CD8", "Autol C57-CD8", "Mixed CD4 HLA B", "Mixed CD8-HLA D")
+
+con2 = c("Reject CD4", "Autol C57 CD4", "WT control CD4", "Reject CD8", "Autol C57-CD8", "WT control CD8", "Reject CD4", "WT control CD4", "Reject CD8", "WT control CD8", "Reject CD4", "Autol Balb-CD8")
+
+name1 = c("mix.4.b", "mix.4.b", "mix.4.b", "mix.8.b", "mix.8.b", "mix.8.b", "auto.4.b", "auto.4.b", "auto.8.b", "auto.8.b", "mix.4.d", "mix.8.d")
+
+name2 = c("rej.4.b", "auto.4.b", "wt.con.4.b", "rej.8.b", "auto.8.b", "wt.con.8.b", "rej.4.b", "wt.con.4.b", "rej.8.b", "wt.con.8.b", "auto.4.d", "auto.8.d")
+
+function.list <- c(list(con1), list(con2), list(name1), list(name2))
+```
+
+```{r}
+pmap(function.list, plot_results)
+```
