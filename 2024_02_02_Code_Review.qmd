@@ -1,16 +1,34 @@
 ---
 title: "2024_02_20_Code_Review"
-format: html
-editor: source
-  markdown: 
-    wrap: 100
+editor: visual
+format: 
+  html:
+    page-layout: full
 ---
 
 # Experimental Design
 
-![](Code%20Review%20Figures/Mouse%20Design.png)
+We have been researching the use of Ruxolitnib, a JAK1/2 kinase inhibitor, to suppress the immune system during bone marrow transplants to increase donor engraftment.
 
-This markdown will walk through the process behind three of my other notebooks: `2023_11_09_bulk_processing`, `2024_01_10_Condition_DESeqs`, `2024_01_19_Condition_Genetonic.qmd`
+In this experiment, we have bulk RNAseq data of lymphocytes isolated from the spleens of mice who received bone marrow transplants under varying conditions.
+
+![](Code%20Review%20Figures/BMT%20Rux%20RNAseq%20Experimental%20Model.png){fig-align="center"}
+
+# Experiment Conditions
+
+We used two strains of mice in this experiment:
+
+-   `Black 6`
+
+-   `Balb/c`
+
+These mice have slightly different forms of the mouse MHC I protein, called H2Kb and H2Kd, respectively.
+
+BMTs that use the same mouse strain as donor and recipient are considered autologous.
+
+BMTs that use different strains for donor and recipient are considered allogenic, and these simulate conditions BMT recipients face in the hospital.
+
+![](Code%20Review%20Figures/Mouse%20Design.png){width="900"}
 
 # Load Libraries
 
@@ -40,7 +58,8 @@ options(future.globals.maxSize = 14000 * 1024^2)
 ```{r}
 meta <- read.csv(file = "2023_11_09_results/combined_meta.csv")
 
-meta
+meta |> 
+  dplyr::count(condition)
 ```
 
 # DESeq and GeneTonic object creation
@@ -49,7 +68,7 @@ meta
 
 I will create two results: DESeq results tables (.csv) GeneTonic objects (.Rdata)
 
-The original script that did was created 2024_01_10. Keeping names consistent for this walkthrough.
+The original script that did this was created 2024_01_10. Keeping folder names consistent for this walkthrough.
 
 ```{r}
 folder.names <- c("2024_01_10_results", "2024_01_10_results/deseq_results", "2024_01_10_results/genetonic_results")
@@ -88,7 +107,7 @@ tx2gene.df
 
 ### Read in salmon quant.sf files using a loop
 
-Pre-define count table matrix by importing one of Salmon result to determine the number of genes for the table matrix.
+This chunk reads the first quant.sf and joins it with the `tx2gene.df`.
 
 ```{r}
 tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/",
@@ -100,7 +119,7 @@ tmp <-  read.delim(paste0("data/raw_data/salmon_output_files/",
 tmp
 ```
 
-Now we can pre-define an empty data matrix to the correct dimensions. Then we will perform a loop to read the quant files and fill in the data matrix on column at a time.
+Now we can pre-define an empty count matrix to the correct dimensions. Then we will perform a loop to read the quant files and fill in the matrix one column at a time.
 
 ```{r}
 sf.df <-  data.frame(matrix(0, 
@@ -130,31 +149,43 @@ sf.df
 rm(gtf_df, tx2gene.df)
 ```
 
-## DESeq analysis
+## DESeq analysis - single comparison walk through
 
-In a smaller bulk RNAseq dataset, where you have only one or two conditions, the counts table would be filtered for low reads as the next step.
+In a smaller bulk RNAseq data, the counts table would be filtered for low reads as the next step.
 
-However, this dataset has multiple cell types and other variables like mouse strain (H2Kb/H2Kd).
+However, this data has multiple cell types (CD4, CD8, NK) and other variables like mouse strain (H2Kb/H2Kd).
 
-I want to create a subset that contains the appropriate columns for my comparison of interest before filtering for reads.
+I need to create a subset of the data that contains the appropriate samples (columns) for my comparison of interest before filtering for reads.
 
 Let's look at the conditions. I'm only interested in T cells right now so I'll remove the NK cell samples.
 
 ```{r}
-combined_meta |> 
+meta |> 
   dplyr::filter(cell_type != "NK") |> 
   dplyr::count(condition)
 ```
 
-This comparison will use the following: condition 1 : "Mixed CD4 HLA B" condition 2 : "Reject CD4"
+This comparison will use the following:
 
-I will use shorthand versions of these groups when writing results files: name 1 : "mix.4.b" name 2 : "rej.4.b"
+-   condition 1 : "Mixed CD4 HLA B"
+
+-   condition 2 : "Reject CD4"
+
+I will use shorthand versions of these groups when writing results files:
+
+-   name 1 : "mix.4.b"
+
+-   name 2 : "rej.4.b"
+
+The code chunk below creates a vector containing the names of the sample in our comparison. It uses the vector to subset the counts matrix and then filters out any genes that have less than 10 reads in any of the subset samples.
+
+Lastly, we subset the metadata for use in our DESeq object later.
 
 ```{r}
 # Subset metadata to the conditions of interest and pull out those sample names
 subset.vector <- meta |> 
   dplyr::filter(condition == "Mixed CD4 HLA B" | condition == "Reject CD4") |> 
-  pull(folder_name)
+  dplyr::pull(folder_name)
 
 # Subset the sf.df
 subset.sf.df <- sf.df |> 
@@ -250,7 +281,7 @@ subset.anno
 Save the DESeq results separately.
 
 ```{r}
-write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/mix.4.b.VS.rej.4.b.csv"))
+write_csv(subset.anno, file = "2024_01_10_results/DESeq_results/mix.4.b.VS.rej.4.b.csv")
 ```
 
 ## GeneTonic
@@ -344,15 +375,13 @@ GeneTonic(dds = subset.dds,
 
 Now that we have run through the code with a single example, let's build a function that can do it all for us.
 
-T
-
 The code chunk below is quite large, but it essentially just the last \~10 code chunks combined into one.
 
 ```{r}
 condition_deseq <- function(con1, con2, name1, name2) {
   
   # Create a vector that has the samples we want to compare
-  subset.vector <- combined_meta |> 
+  subset.vector <- meta |> 
     dplyr::filter(condition == con1 | condition == con2) |> 
     pull(folder_name)
   
@@ -370,7 +399,7 @@ condition_deseq <- function(con1, con2, name1, name2) {
 
 # Filtering metadata so only relevant samples are put into the DESeq object
   subset_meta <- meta |> 
-    filter(folder_name %in% subset.vector))
+    filter(folder_name %in% subset.vector)
   
   # Create subset salmon matrix
   
@@ -426,7 +455,7 @@ condition_deseq <- function(con1, con2, name1, name2) {
   
   # write csv file
   
-  write_csv(subset.anno, file = paste0(folder.name, "/DESeq_results/", name1, ".VS.", name2, ".csv"))
+  write_csv(subset.anno, file = paste0("2024_01_10_results/DESeq_results/", name1, ".VS.", name2, ".csv"))
   
   # GeneTonic Prep
   
@@ -478,7 +507,7 @@ condition_deseq <- function(con1, con2, name1, name2) {
   
   # save info for GeneTonic
   
-  save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0(folder.name, "/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
+  save(subset.dds, subset.res, subset.topgo, sf.df.anno, file = paste0("2024_01_10_results/genetonic_results/", name1, ".VS.", name2, ".Rdata"))
 }
 ```
 
@@ -503,7 +532,7 @@ Next!
 
 # Generating heatmaps, volcano plots, and GeneTonic plots
 
-## Single comparison walkthrough
+## Single comparison walk through
 
 Creating a new folder for these results. This time around, I am creating 4 plots for every comparison.
 
@@ -512,10 +541,19 @@ I could create a folder for heatmaps, one for volcano plots, etc...
 But that is hard to navigate. I think it would be better for each comparison to have it's own folder that contains the relevant plots. We'll let the function do that for us as well.
 
 ```{r}
+load(file = paste0("2024_01_10_results/genetonic_results/mix.4.b.VS.rej.4.b.Rdata"))
+
+deseq.df <- read.csv(file = paste0("2024_01_10_results/deseq_results/mix.4.b.VS.rej.4.b.csv"))
+```
+
+
+```{r}
 folder.name <- "2024_01_19_results"
 
 if(!exists(folder.name)){
-  dir.create(folder.name)}
+    dir.create(folder.name)
+  }
+
 ```
 
 ### Heatmap generation
@@ -523,6 +561,8 @@ if(!exists(folder.name)){
 The column names in the counts matrix provide the mouse number but are quite long and not informative. Making an annotation dataframe will make the heatmaps more accessible.
 
 ```{r}
+sample.df <- dplyr::select(deseq.df, -1:-10)
+
 # Filter metadata for one of the condition comparisons
 subset1 <- meta |> 
   filter(condition == "Mixed CD4 HLA B") |> 
@@ -533,7 +573,7 @@ subset1 <- subset1 |>
 # R adds X to all column names that start with a number, so we need to add X as well
 subset1 <- paste0("X", subset1)
 # Create the annotation dataframe where the column name is matched with its condition
-anno <- data.frame(sample_name = colnames(top_25_padj)) |> 
+anno <- data.frame(sample_name = colnames(sample.df)) |> 
   mutate(condition = ifelse(sample_name %in% subset1, "Mixed CD4 HLA B", "Reject CD4")) |> 
   column_to_rownames("sample_name")
 
@@ -543,6 +583,12 @@ names(condition) <- c("Mixed CD4 HLA B", "Reject CD4")
 anno_colors <- list(condition = condition)
 ```
 
+```{r}
+anno
+anno_colors
+```
+
+
 ### Create and save heatmaps
 
 ```{r}
@@ -550,7 +596,7 @@ anno_colors <- list(condition = condition)
 deseq.df |> 
   dplyr::slice(1:25) |> 
   column_to_rownames(var = "gene_symbol") |> 
-  dplyr::select(contains("L002")) |> 
+  dplyr::select(-1:-9) |> 
   pheatmap(scale = "row",
          fontsize = 12,
          fontsize_row = 11,
@@ -559,16 +605,16 @@ deseq.df |>
          annotation = anno,
          annotation_colors = anno_colors,
          main = "Top 25 genes by p-value") |> 
-         ggsave(filename = paste0(heatmap.name, "mix.4.b.VS.rej.4.b.padj.png"))
+         ggsave(filename = "2024_01_19_results/mix.4.b.VS.rej.4.b/mix.4.b.VS.rej.4.b.padj.png")
 ```
 
 ```{r}
 deseq.df |> 
   filter(padj <= 0.05) |> 
   arrange(desc(abs(c(log2FoldChange)))) |> 
-  column_to_rownames(var = "gene_symbol") |> 
-  dplyr::select(contains("L002")) |> 
   dplyr::slice(1:25) |> 
+  column_to_rownames(var = "gene_symbol") |> 
+  dplyr::select(-1:-9) |>
   pheatmap(scale = "row",
          fontsize = 12,
          fontsize_row = 11,
@@ -577,7 +623,7 @@ deseq.df |>
          annotation = anno,
          annotation_colors = anno_colors,
          main = "Top 25 genes by absolute log2FC") |> 
-         ggsave(filename = paste0(heatmap.name, "mix.4.b.VS.rej.4.b.log2FC.png"))
+         ggsave(filename = "2024_01_19_results/mix.4.b.VS.rej.4.b/mix.4.b.VS.rej.4.b.log2FC.png")
 ```
 
 ## Volcano plot of DE genes
@@ -596,7 +642,7 @@ EnhancedVolcano(toptable = deseq.df,
                 # #labFace = "bold",
                 legendPosition = "none",
                 caption = "") |> 
-  ggsave(filename = paste0(volcano.name, "mix.4.b.VS.rej.4.b.volcano.png"))
+  ggsave(filename = "2024_01_19_results/mix.4.b.VS.rej.4.b/mix.4.b.VS.rej.4.b.volcano.png")
 ```
 
 ## GeneTonic Pathway summary plot
@@ -607,7 +653,7 @@ p <- gs_summary_overview(res_enrich = subset.topgo,
   labs(title = "Pathway Enrichment",
        subtitle = "Mixed CD4 HLA B vs Reject CD4")
 
-ggsave(filename = paste0(summary.name, "mix.4.b.VS.rej.4.b.summary.png"),
+ggsave(filename = "2024_01_19_results/mix.4.b.VS.rej.4.b/mix.4.b.VS.rej.4.b.summary.png",
        plot = p,
        width = 11,
        height = 8,
@@ -629,7 +675,7 @@ plot_results <- function(con1, con2, name1, name2){
     dir.create(results.folder)}
   
   # filter the deseq.df so we can pull out the colnames for the annotation df
-  sample.df <- select(deseq.df, -1:-10)
+  sample.df <- dplyr::select(deseq.df, -1:-10)
   
   # Filter metadata for one of the condition comparisons
   subset1 <- meta |> 
@@ -671,7 +717,7 @@ plot_results <- function(con1, con2, name1, name2){
     arrange(desc(abs(c(log2FoldChange)))) |> 
     dplyr::slice(1:25) |> 
     column_to_rownames(var = "gene_symbol") |> 
-    select(-1:-9) |> 
+    dplyr::select(-1:-9) |> 
     pheatmap(scale = "row",
            fontsize = 12,
            fontsize_row = 11,
