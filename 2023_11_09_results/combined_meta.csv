@@ -1,0 +1,36 @@
+"","sample_id","revised_id","condition","group","folder_name","cell_type","mouse_number","H2K","recip_mouse","radiation","replicate"
+"1","CD4_52","CD4_reject_1","Reject CD4","Rejection","52-CD4_S37_L002","CD4","52","b","b6",6,1
+"2","CD4_53","CD4_reject_2","Reject CD4","Rejection","53-CD4_S39_L002","CD4","53","b","b6",6,2
+"3","CD4_55","CD4_auto_b6_1","Autol C57 CD4","Auto_b6","55-CD4_S41_L002","CD4","55","b","b6",12,1
+"4","CD4_56","CD4_auto_b6_2","Autol C57 CD4","Auto_b6","56-CD4_S43_L002","CD4","56","b","b6",12,2
+"5","CD4_61","CD4_auto_balb_1","Autol Balb-CD4","Auto_balb","61-CD4_S57_L002","CD4","61","d","balb",8,1
+"6","CD4_62","CD4_auto_balb_2","Autol Balb-CD4","Auto_balb","62-CD4_S59_L002","CD4","62","d","balb",8,2
+"7","CD4_63","CD4_auto_balb_3","Autol Balb-CD4","Auto_balb","63-CD4_S61_L002","CD4","63","d","balb",8,3
+"8","CD4_B_57","CD4_mix_B_1","Mixed CD4 HLA B","Mixed","57-CD4-B_S45_L002","CD4","57","b","b6",6,1
+"9","CD4_B_58","CD4_mix_B_2","Mixed CD4 HLA B","Mixed","58-CD4-B_S49_L002","CD4","58","b","b6",6,2
+"10","CD4_B_60","CD4_mix_B_3","Mixed CD4 HLA B","Mixed","60-CD4-B_S53_L002","CD4","60","b","b6",6,3
+"11","CD4_D_57","CD4_mix_D_1","Mixed CD4-HLA D","Mixed","57-CD4-D_S46_L002","CD4","57","d","b6",6,1
+"12","CD4_D_58","CD4_mix_D_2","Mixed CD4-HLA D","Mixed","58-CD4-D_S50_L002","CD4","58","d","b6",6,2
+"13","CD4_D_60","CD4_mix_D_3","Mixed CD4-HLA D","Mixed","60-CD4-D_S54_L002","CD4","60","d","b6",6,3
+"14","CD8_52","CD8_reject_1","Reject CD8","Rejection","52-CD8_S38_L002","CD8","52","b","b6",6,1
+"15","CD8_53","CD8_reject_2","Reject CD8","Rejection","53-CD8_S40_L002","CD8","53","b","b6",6,2
+"16","CD8_55","CD8_auto_b6_1","Autol C57-CD8","Auto_b6","55-CD8_S42_L002","CD8","55","b","b6",12,1
+"17","CD8_56","CD8_auto_b6_2","Autol C57-CD8","Auto_b6","56-CD8_S44_L002","CD8","56","b","b6",12,2
+"18","CD8_61","CD8_auto_balb_1","Autol Balb-CD8","Auto_balb","61-CD8_S58_L002","CD8","61","d","balb",8,1
+"19","CD8_62","CD8_auto_balb_2","Autol Balb-CD8","Auto_balb","62-CD8_S60_L002","CD8","62","d","balb",8,2
+"20","CD8_63","CD8_auto_balb_3","Autol Balb-CD8","Auto_balb","63-CD8_S62_L002","CD8","63","d","balb",8,3
+"21","CD8_B_57","CD8_mix_B_1","Mixed CD8-HLA B","Mixed","57-CD8-B_S47_L002","CD8","57","b","b6",6,1
+"22","CD8_B_58","CD8_mix_B_2","Mixed CD8-HLA B","Mixed","58-CD8-B_S51_L002","CD8","58","b","b6",6,2
+"23","CD8_B_60","CD8_mix_B_3","Mixed CD8-HLA B","Mixed","60-CD8-B_S55_L002","CD8","60","b","b6",6,3
+"24","CD8_D_57","CD8_mix_D_1","Mixed CD8-HLA D","Mixed","57-CD8-D_S48_L002","CD8","57","d","b6",6,1
+"25","CD8_D_58","CD8_mix_D_2","Mixed CD8-HLA D","Mixed","58-CD8-D_S52_L002","CD8","58","d","b6",6,2
+"26","CD8_D_60","CD8_mix_D_3","Mixed CD8-HLA D","Mixed","60-CD8-D_S56_L002","CD8","60","d","b6",6,3
+"27","NK1","NK_reject","Reject NK","Rejection","NK-1_S32_L002","NK","52-53","b","b6",6,1
+"28","NK2B","NK_mix_B","Mixed NK HLA B","Mixed","NK-2B_S33_L002","NK","57-60","b","b6",6,1
+"29","NK2D","NK_mix_D","Mixed NK HLA D","Mixed","NK-2D_S34_L002","NK","57-60","d","b6",6,1
+"30","NK3","NK_auto_balb","Autol Balb NK","Auto_balb","NK-3_S35_L002","NK","61-63","d","balb",8,1
+"31","NK4","NK_auto_b6","Autol C57 NK","Auto_b6","NK-4_S36_L002","NK","55-56","b","b6",12,1
+"32","CD8_control_1","CD8_control_b6_1","WT control CD8","control_b6","SRR6927755","CD8",NA,"b",NA,NA,1
+"33","CD8_control_2","CD8_control_b6_2","WT control CD8","control_b6","SRR6927757","CD8",NA,"b",NA,NA,2
+"34","CD4_control_1","CD4_control_b6_1","WT control CD4","control_b6","SRR6927754","CD4",NA,"b",NA,NA,1
+"35","CD4_control_2","CD4_control_b6_2","WT control CD4","control_b6","SRR6927756","CD4",NA,"b",NA,NA,2
