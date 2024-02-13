@@ -17,9 +17,13 @@ Additional data for control CD4 and CD8 T cells (isolated from spleens) was brou
 Folders contain the following:
 
 ## 2023_11_09_results
+Results from to 2023_11_09_bulk_processing.qmd where one subset of the data is put into the DESeq pipeline.
 
 ## 2024_01_10_Condition_DESeqs
+Results from 2024_01_10_Condition_DESeqs.qmd where the subset DESeq process is made into a function and used to analyze all the other condition comparisons. Variable for GeneTonic are also generated and stored.
 
 ## 2024_01_11_Group_DESeqs
+Results from 2024_01_11_Group_DESeqs where conditions are combined to form larger subsets, then run through the DESeq/GeneTonic results function.
 
-## 2024_01_19_Condition_Genetonic
+## 2024_01_19_Condition_Plots.qmd
+Results from 2024_01_19_Condition_Plots.qmd where heatmaps, volcano plots, and gene set enrichment plots are generated. 
