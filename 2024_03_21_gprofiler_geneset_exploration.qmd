@@ -1,0 +1,66 @@
+---
+title: "2024_03_21_gprofiler_geneset_exploration"
+format: html
+editor: source
+---
+
+This notebook will use the gprofiler package for expanded gene set enerichment analsysis.
+
+# Install Libraries
+
+```{r Libraries}
+suppressPackageStartupMessages({
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(gprofiler2)
+})
+```
+# Set up directories
+
+```{r}
+result.dir <- "2024_03_21_results/"
+
+if(!exists(result.dir)){
+  dir.create(result.dir)
+}
+
+data.dir <- "2024_01_10_results/deseq_results/"
+```
+
+# Read in data and filter only significant genes
+
+```{r}
+df <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Reject.CD4.B.csv"))
+```
+
+```{r}
+gene.vector <- df |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol) |> 
+  slice(1:500)
+
+temp <- gene.vector$gene_symbol
+
+write(temp, file = "test.txt")
+```
+
+Gene set enrichment
+
+```{r}
+enrich <- gost(temp,
+               organism = "mmusculus",
+               ordered_query = T,
+               significant = T,
+               evcodes = T,
+               custom_bg = NULL)
+
+
+?gost
+```
+
+
+```{r}
+gostplot(enrich)
+```
+
