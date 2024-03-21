@@ -26,7 +26,11 @@ Results from 2024_01_10_Condition_DESeqs.qmd where the subset DESeq process is m
 Results from 2024_01_11_Group_DESeqs where conditions are combined to form larger subsets, then run through the DESeq/GeneTonic results function.
 
 ## 2024_01_19_Condition_Plots
-Results from 2024_01_19_Condition_Plots.qmd where heatmaps, volcano plots, and gene set enrichment plots are generated. 
+Results from 2024_01_19_Condition_Plots.qmd where heatmaps, volcano plots, and gene set enrichment plots are generated.
 
 ## 2024_02_09_Code_Review.qmd
 This notebook was created for a lab code review meeting. It combines the walkthroughs and functions used to create DESeq results, GeneTonic objects, and resulting plots. It references the same result folders: 2024_01_10_Condition_DESeqs and 2024_01_19_Condition_Plots.
+
+## 2024_03_21_
+
+Took the DESeq results and ran them through gprofiler for gene set analysis with more ontologies.
