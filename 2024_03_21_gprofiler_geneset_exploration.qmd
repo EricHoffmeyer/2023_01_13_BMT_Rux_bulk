@@ -16,6 +16,10 @@ library(plotly)
 library(gprofiler2)
 })
 ```
+```{r}
+options(future.globals.maxSize = 14000 * 1024^2)
+```
+
 # Set up directories
 
 ```{r}
@@ -32,6 +36,7 @@ data.dir <- "2024_01_10_results/deseq_results/"
 
 ```{r}
 df <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Reject.CD4.B.csv"))
+df.2 <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.Reject.CD8.B.csv"))
 ```
 
 ```{r}
@@ -42,7 +47,14 @@ gene.vector <- df |>
 
 temp <- gene.vector$gene_symbol
 
-write(temp, file = "test.txt")
+gene.vector2 <- df.2 |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol) |> 
+  slice(1:500)
+
+temp.2 <- gene.vector2$gene_symbol
+
+temp.list <- list("MvR4" = temp, "MvR8" = temp.2)
 ```
 
 Gene set enrichment
@@ -54,13 +66,35 @@ enrich <- gost(temp,
                significant = T,
                evcodes = T,
                custom_bg = NULL)
-
-
-?gost
 ```
-
 
 ```{r}
 gostplot(enrich)
 ```
+
+
+```{r}
+enrich.list <- gost(temp.list,
+                    organism = "mmusculus",
+                    ordered_query = T,
+                    significant = T,
+                    evcodes = T,
+                    custom_bg = NULL)
+
+gostplot(enrich.list)
+```
+
+```{r}
+publish_gosttable(enrich.list,
+                  highlight_terms = enrich.list$result[c(1:20),],
+                  use_colors = T,
+                  show_columns = c('source', 'term_name', 'term_size', 'intersection_size'),
+                  filename = NULL,
+                  ggplot = T)
+```
+
+```{r}
+View(enrich.list$result)
+```
+
 
