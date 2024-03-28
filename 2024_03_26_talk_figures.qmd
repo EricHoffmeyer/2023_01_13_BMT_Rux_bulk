@@ -4,23 +4,213 @@ format: html
 editor: visual
 ---
 
-## Quarto
+Making some custom figures for a talk Mike is giving.
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+# Libraries
 
 ```{r}
-1 + 1
+library(VennDiagram)
+library(tidyverse)
 ```
 
-You can add options to executable code like this
+# Directories
 
 ```{r}
-#| echo: false
-2 * 2
+result.dir <- "2024_03_26_results/"
+
+if(!exists(result.dir)){
+  dir.create(result.dir)
+}
+
+data.dir <- "2024_01_10_results/deseq_results/"
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+# Read in data and filter only significant genes
+
+
+```{r}
+mix4.auto <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Auto.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+mix4.reject <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Reject.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+mix4.wt <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.WT.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+
+mix8.auto <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.Auto.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+mix8.reject <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.Reject.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+mix8.wt <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.WT.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol)
+```
+
+
+
+
+# CD4 diagram
+
+```{r}
+venn.diagram(
+  x = list(mix4.auto$gene_symbol, mix4.reject$gene_symbol, mix4.wt$gene_symbol),
+  category.names = c("Autologous" , "Rejection" , "WT control"),
+  filename = paste0(result.dir,'CD4.png'),
+  output=TRUE
+)
+```
+
+Create a colorful version
+
+```{r}
+# Prepare a palette of 3 colors with R colorbrewer:
+library(RColorBrewer)
+myCol <- brewer.pal(3, "Pastel2")
+```
+
+Make chart
+
+```{r}
+# Chart
+venn.diagram(
+  x = list(mix4.auto$gene_symbol, mix4.reject$gene_symbol, mix4.wt$gene_symbol),
+  category.names = c("vs Autologous" , "vs Rejection" , "vs WT control"),
+  filename = paste0(result.dir,'CD4.png'),
+  output= T,
+  
+  # Output features
+  imagetype = "png",
+  height = 1000, 
+  width = 1000, 
+  resolution = 300,
+  compression = "lzw",
+        
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = myCol,
+  alpha = 0.7,
+        
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+        
+  # Set names
+  cat.cex = 0.6,
+  cat.fontface = "bold",
+  cat.default.pos = "outer",
+  cat.pos = c(-27, 27, 135),
+  cat.dist = c(0.055, 0.055, 0.085),
+  cat.fontfamily = "sans",
+  rotation = 1
+)
+```
+
+I need the list of these genes as well
+
+```{r}
+cd4.shared <- mix4.auto |> 
+  inner_join(mix4.reject, by = "gene_symbol") |> 
+  inner_join(mix4.wt, by = "gene_symbol")
+
+write.csv(cd4.shared, file = paste0(result.dir, "CD4.shared.gene.list.csv"))
+```
+
+# CD8 versions
+
+Venn Diagram
+
+```{r}
+# Chart
+venn.diagram(
+  x = list(mix8.auto$gene_symbol, mix8.reject$gene_symbol, mix8.wt$gene_symbol),
+  category.names = c("vs Autologous" , "vs Rejection" , "vs WT control"),
+  filename = paste0(result.dir,'CD8.png'),
+  output= T,
+  
+  # Output features
+  imagetype = "png",
+  height = 1000, 
+  width = 1000, 
+  resolution = 300,
+  compression = "lzw",
+        
+  # Circles
+  lwd = 2,
+  lty = 'blank',
+  fill = myCol,
+  alpha = 0.7,
+        
+  # Numbers
+  cex = .6,
+  fontface = "bold",
+  fontfamily = "sans",
+        
+  # Set names
+  cat.cex = 0.6,
+  cat.fontface = "bold",
+  cat.default.pos = "outer",
+  cat.pos = c(-27, 27, 135),
+  cat.dist = c(0.055, 0.055, 0.085),
+  cat.fontfamily = "sans",
+  rotation = 1
+)
+```
+
+Shared gene list
+
+```{r}
+cd8.shared <- mix8.auto |> 
+  inner_join(mix8.reject, by = "gene_symbol") |> 
+  inner_join(mix8.wt, by = "gene_symbol")
+
+write.csv(cd8.shared, file = paste0(result.dir, "CD8.shared.gene.list.csv"))
+```
+
+# Shared between both cell types
+
+```{r}
+all.shared <- cd4.shared |> 
+  inner_join(cd8.shared, by = "gene_symbol")
+
+write.csv(all.shared, file = paste0(result.dir, "CD4.and.CD8.shared.gene.list.csv"))
+```
+
+
+
+
+
+
+# check if genes are up or down
+
+```{r}
+mix4.auto <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Auto.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+mix4.reject <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.Reject.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+mix4.wt <- read.csv(file = paste0(data.dir, "Mixed.CD4.B.vs.WT.CD4.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+
+mix8.auto <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.Auto.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+mix8.reject <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.Reject.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+mix8.wt <- read.csv(file = paste0(data.dir, "Mixed.CD8.B.vs.WT.CD8.B.csv")) |> 
+  filter(padj < 0.05) |> 
+  select(gene_symbol, log2FoldChange)
+```
+
+Re run the cd4.shared, cd8.shared, and all.shared again to check.
+
+
