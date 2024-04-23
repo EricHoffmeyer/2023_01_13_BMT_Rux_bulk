@@ -1,0 +1,63 @@
+---
+title: "2024_04_23_Exploration"
+format: html
+editor: visual
+---
+
+Making some custom figures for a talk Mike is giving.
+
+# Libraries
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(gprofiler2)
+})
+```
+
+# Directories
+
+```{r}
+result.dir <- "2024_04_23_results/"
+
+if(!exists(result.dir)){
+  dir.create(result.dir)
+}
+
+```
+
+# Read in data and filter only significant genes
+
+```{r}
+mix4.vs.all.4 <- read.csv(file = "2024_01_18_results/DESeq_results/mix.4.VS.all.4.csv") |> 
+  filter(padj <= 0.05)
+
+mix4.vs.auto.4 <- read.csv(file = "2024_01_10_results/deseq_results/Mixed.CD4.D.vs.Auto.CD4.D.csv") |> 
+  filter(padj <= 0.05)
+```
+
+
+```{r}
+temp <- mix4.vs.auto.4$gene_symbol
+  
+temp2 <- gost(temp,
+             organism = "mmusculus",
+             ordered_query = T,
+             evcodes = T,
+             custom_bg = NULL,
+             sources = c("GO", "KEGG", "REAC"))
+  
+```
+
+
+```{r}
+unique(temp)
+```
+
+
+
+
+
+
+
+
