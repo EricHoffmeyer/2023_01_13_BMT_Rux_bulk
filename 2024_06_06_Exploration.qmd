@@ -1,0 +1,172 @@
+---
+title: "2024_06_06_Exploration"
+format: html
+editor: source
+---
+
+## Description
+
+In this notebook I will put some figures together for Mike for a grant submission. I will investigate a couple of lines of inquiry and generate figures.
+
+The main goal here is to form a narrative of what type of processes are going on in the mice who receive Ruxolitinib with their bone marrow transplant. Try to explain how they tolerate H2K mismatched PBMCs, or at least point to the data and figure generated here to guide the direction of future experiments using a new grant
+
+# Libraries
+
+```{r}
+suppressPackageStartupMessages({
+library(tidyverse)
+library(gprofiler2)
+library(ggplot2)
+})
+```
+
+# Directories
+
+```{r}
+results.dir <- "2024_06_06_results/"
+```
+
+# H2Kb ChEA results
+
+I took the shared DE genes from the CD4 cells from 2024_03_26 and put them into the ChIP-X Enrichment analsysis (ChEA) website
+
+Read in the csv files.
+
+```{r}
+chea.cd4 <- read.csv(file = "data/archs4_CD4_TF_GO_lists.csv")
+chea.cd8 <- read.csv(file = "data/archs4_CD8_TF_GO_lists.csv")
+
+head(chea.cd4)
+```
+
+Explore the common gene ontologies.
+
+```{r}
+chea.cd4 |> 
+  group_by(gene_set) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+
+chea.cd8 |> 
+  group_by(gene_set) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+```
+
+This tables gives us a little direction. It mentions gamma delta T cells, a rare and under-researched subset of T cells. If they play a role here, we would need to design a future experiment that could capture them.
+
+During Mike's grant review, some other PIs mentioned depleting cell subsets from the PBMCs given in the BMT (T cells, B cells, etc). While these subsets may have an integral row in initiall acceptance of BMT, I'm not sure
+
+```{r}
+chea.all <- rbind(chea.cd4, chea.cd8)
+
+chea.all |> 
+  group_by(gene_set) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+```
+
+
+# Exploration of H2Kd cells
+
+Most of the DESeq data we've looked at has been from the H2Kb Black 6 mices, since we have those cell subsets for multiple conditions. We don't have as many H2Kd Balb/c conditions, since they are only present in the mixed condition and the balb/c autologous condition.
+
+```{r}
+mix.4.d.vs.auto.4.d <- read.csv(file = "2024_01_10_results/deseq_results/Mixed.CD4.D.vs.Auto.CD4.D.csv") |> 
+  filter(padj <= 0.05)
+
+mix.8.d.vs.auto.8.d <- read.csv(file = "2024_01_10_results/deseq_results/Mixed.CD8.D.vs.Auto.CD8.D.csv") |> 
+  filter(padj <= 0.05)
+
+
+# Which DE genes are shared by both conditions?
+mix.d.common <- mix.4.d.vs.auto.4.d |> 
+  inner_join(mix.8.d.vs.auto.8.d, by = "gene_symbol") |> 
+  select(gene_symbol)
+
+# Write out csv of genes 
+write.csv(mix.d.common, file = paste0(results.dir, "h2kd.CD4.and.CD8.shared.gene.list.csv"))
+```
+
+## H2Kd ChEA
+
+I took the shared DE genes from the H2Kd CD4 and CD8 cells and entered them into ChEa. I took each TF gene and it's top 10 biological processes and created a csv. I am uploading it here to look for common processes.
+
+```{r}
+mix.d.chea <- read.csv(file = "data/archs4_H2KD_CD4and8_TF_GO_lists.csv")
+  
+mix.d.chea |> 
+  group_by(gene_set) |> 
+  summarise(count = n()) |> 
+  arrange(desc(count))
+```
+
+Tolerance induction #1. Not surprising that there seems to be something going on with the T cells. The question is how can we investigate this further to identify a mechanism and/or cell populations(s) responsible for it.
+
+## Gene set enrichment gProfiler2
+
+Enter in the gene list for enrichment analysis via gProfiler.
+
+```{r}
+gostres <- gost(query = mix.d.common$gene_symbol,
+                organism = "mmusculus")
+head(gostres$result)
+```
+Manhattan plot of results
+
+```{r}
+gostplot(gostres)
+```
+
+Table of results
+
+```{r}
+res_plot <- gostres$result |> 
+  arrange(p_value)
+
+publish_gosttable(gostres, highlight_terms = res_plot[c(1:20),],
+                        use_colors = TRUE, 
+                        show_columns = c("source", "term_name", "term_size", "intersection_size"),
+                        filename = NULL) |> 
+  ggsave(filename = paste0(results.dir, "h2kd.common.enrichment.table.png"),
+         width = 11,
+         height = 8,
+         units = "in")
+
+```
+
+This doesn't really point us in any direction, but let's repeat it with the H2Kb cells just in case.
+
+# H2Kb gProfiler enrichment
+
+```{r}
+
+```
+
+
+# Mixed CD4 H2Kd/H2Kb vs Auto H2Kd/H2Kbs
+
+2024_01_18_results
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
